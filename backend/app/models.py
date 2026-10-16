@@ -86,6 +86,21 @@ class EmailToken(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+class Invitation(Base):
+    """멤버 초대. 링크에는 무작위 토큰, DB 에는 해시만. 수락·취소하면 이메일을 지운다."""
+    __tablename__ = "invitations"
+    id: Mapped[uuid.UUID] = pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    email: Mapped[str | None] = mapped_column(String(320))  # 대기 중일 때만 (소문자)
+    role: Mapped[str] = mapped_column(String(20))  # manager | viewer
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    invited_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at()
+
+
 class AuthSession(Base):
     """로그인 세션. 쿠키에는 무작위 토큰, DB 에는 그 해시만 둔다."""
     __tablename__ = "auth_sessions"

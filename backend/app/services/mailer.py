@@ -109,3 +109,15 @@ def reset_mail(to: str, name: str | None, link: str) -> Mail:
 
 — ROOMAX (이 메일은 발신 전용입니다)
 """)
+
+
+def invite_mail(to: str, organization_name: str, inviter: str | None, role_label: str, link: str) -> Mail:
+    return Mail(to, f"[ROOMAX] {organization_name} 사업장에 초대되었습니다", f"""{inviter or '사업장 대표'}님이 ROOMAX 의 '{organization_name}' 사업장에 {role_label} 권한으로 초대했습니다.
+
+아래 링크에서 이름과 비밀번호를 정하면 바로 참여합니다. (7일 동안 유효, 한 번만 사용 가능)
+{link}
+
+초대받을 일이 없다면 이 메일을 무시하세요. 수락하지 않으면 계정은 만들어지지 않습니다.
+
+— ROOMAX (이 메일은 발신 전용입니다)
+""")

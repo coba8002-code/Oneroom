@@ -16,6 +16,7 @@ from app.models import (
     AuditLog,
     BankAccount,
     EmailToken,
+    Invitation,
     Lease,
     LeaseDocument,
     Organization,
@@ -72,6 +73,15 @@ class DeleteAccountIn(BaseModel):
     password: str = Field(max_length=200)
     otp: str | None = Field(default=None, max_length=10)
     confirm_name: str | None = Field(default=None, max_length=200)  # 대표 탈퇴(사업장 해지) 때 사업장 이름
+
+
+class InviteAcceptIn(BaseModel):
+    token: str = Field(max_length=200)
+    name: str = Field(min_length=1, max_length=100)
+    password: str = Field(max_length=200)
+    agree_terms: bool
+    agree_privacy: bool
+    agree_marketing: bool = False
 
 
 class MarketingIn(BaseModel):
@@ -155,6 +165,52 @@ def signup(body: SignupIn, request: Request, response: Response, background: Bac
     session.flush()
     _log(session, user, "auth.signup", {"marketing": body.agree_marketing})
     _send_verify(session, user, background)  # 가입 직후 확인 메일 (안 해도 쓸 수 있음)
+    token, expires = auth.start_session(session, user, request.headers.get("user-agent"))
+    session.commit()
+    auth.set_cookie(response, token, expires)
+    return _me(session, user)
+
+
+BAD_INVITE = "초대 링크가 만료됐거나 취소됐습니다. 사업장 대표에게 다시 초대를 요청하세요"
+
+
+def _open_invitation(session: Session, token: str) -> Invitation:
+    inv = session.scalar(select(Invitation).where(Invitation.token_hash == auth._token_hash(token)))
+    if (inv is None or inv.accepted_at is not None or inv.revoked_at is not None
+            or auth._aware(inv.expires_at) <= auth.utcnow()):
+        raise HTTPException(410, BAD_INVITE)
+    return inv
+
+
+@router.post("/invitation/preview")
+def invitation_preview(body: TokenIn, session: Session = Depends(get_session)) -> dict:
+    """초대 링크를 연 사람에게 어느 사업장·어떤 권한인지 보여준다 (로그인 없이)."""
+    inv = _open_invitation(session, body.token)
+    org = session.get(Organization, inv.organization_id)
+    return {"organization_name": org.name, "email": inv.email, "role": inv.role,
+            "expires_at": inv.expires_at.isoformat()}
+
+
+@router.post("/invitation/accept", status_code=201)
+def invitation_accept(body: InviteAcceptIn, request: Request, response: Response,
+                      session: Session = Depends(get_session)) -> dict:
+    """초대 수락 = 그 사업장의 계정 만들기 + 로그인. 메일 링크로 왔으므로 이메일은 확인된 것으로 본다."""
+    inv = _open_invitation(session, body.token)
+    if not (body.agree_terms and body.agree_privacy):
+        raise HTTPException(422, "이용약관과 개인정보 수집·이용에 동의해야 참여할 수 있습니다")
+    if (problem := auth.password_problem(body.password, inv.email)):
+        raise HTTPException(422, problem)
+    if session.scalar(select(User.id).where(func.lower(User.email) == inv.email)):
+        raise HTTPException(409, "이 이메일로 이미 ROOMAX 계정이 있습니다. 한 계정은 한 사업장에만 속할 수 있어, "
+                                 "대표에게 다른 이메일로 초대를 요청하세요")
+    now = auth.utcnow()
+    user = User(organization_id=inv.organization_id, email=inv.email, name=body.name.strip(), role=inv.role,
+                password_hash=auth.hash_password(body.password), terms_agreed_at=now, privacy_agreed_at=now,
+                marketing_agreed_at=now if body.agree_marketing else None, email_verified_at=now)
+    session.add(user)
+    session.flush()
+    inv.accepted_at, inv.email = now, None
+    _log(session, user, "auth.invitation_accepted", {"role": inv.role, "marketing": body.agree_marketing})
     token, expires = auth.start_session(session, user, request.headers.get("user-agent"))
     session.commit()
     auth.set_cookie(response, token, expires)

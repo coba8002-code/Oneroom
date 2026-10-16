@@ -36,7 +36,7 @@ MAGIC = b"ROOMAXBK"
 FILE_VERSION = 1
 FORMAT = 1
 # 백업을 만든 DB 스키마. 마이그레이션을 추가하면 같이 올린다 (test_backup 이 alembic head 와 비교)
-SCHEMA_REVISION = "0006"
+SCHEMA_REVISION = "0007"
 MIN_PASSPHRASE = 8
 KST = ZoneInfo("Asia/Seoul")
 MAX_BACKUP_BYTES = 300_000_000
@@ -57,7 +57,7 @@ CHILDREN = (  # (테이블, 외래키 열, 부모 테이블)
 )
 COVERED = {"organizations", "audit_logs", *ORG_COLUMN, *(c[0] for c in CHILDREN)}
 # 계정 정보(비밀번호 해시·세션·MFA 키)는 백업에 넣지 않는다 — 데이터가 아니라 로그인 수단
-EXCLUDED = {"users", "auth_sessions", "email_tokens"}
+EXCLUDED = {"users", "auth_sessions", "email_tokens", "invitations"}
 
 
 class BackupError(ValueError):

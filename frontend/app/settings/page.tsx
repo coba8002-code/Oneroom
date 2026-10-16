@@ -15,6 +15,8 @@ import {
   ServerCog,
   Trash2,
   TriangleAlert,
+  UserPlus,
+  Users,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, apiFetch, kst } from "@/lib/api";
@@ -75,6 +77,7 @@ export default function SettingsPage() {
       <div className="grid gap-4 xl:grid-cols-2 [&>*]:min-w-0">
         <AccountCard />
         <SecurityCard />
+        {isOwner && <MembersCard />}
         {isOwner && orgs && orgs.length > 0 && <ExportCard orgId={orgId} lastBackup={lastBackup} onDone={reload} />}
         {isOwner && <RestoreCard onDone={reload} />}
         <ServerBackupCard />
@@ -528,6 +531,91 @@ function DeleteAccountCard() {
           </div>
         </div>
       )}
+      <Msg m={msg} />
+    </section>
+  );
+}
+
+interface MemberRow { id: string; name: string | null; email: string; role: "owner" | "manager" | "viewer"; me: boolean;
+  mfa_enabled: boolean; last_login_at: string | null }
+interface InviteRow { id: string; email: string; role: "manager" | "viewer"; expires_at: string; expired: boolean }
+
+const ROLE_NAME = { owner: "대표", manager: "관리자", viewer: "조회" } as const;
+
+/** 멤버 초대·권한·내보내기 (대표만). 관리자 = 입력·수정, 조회 = 보기만. */
+function MembersCard() {
+  const [data, setData] = useState<{ members: MemberRow[]; invitations: InviteRow[] } | null>(null);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"manager" | "viewer">("manager");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const load = useCallback(async () => {
+    try { setData(await api("/api/v1/members")); } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const json = (method: string, body?: unknown) => ({ method,
+    ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}) });
+  async function run(fn: () => Promise<unknown>, ok: string) {
+    setBusy(true); setMsg(null);
+    try { await fn(); setMsg({ ok: true, text: ok }); await load(); }
+    catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+    finally { setBusy(false); }
+  }
+  const invite = (to: string, r: "manager" | "viewer") => run(async () => {
+    await api("/api/v1/members/invitations", json("POST", { email: to, role: r }));
+    setEmail("");
+  }, `${to} 로 초대 메일을 보냈습니다 (7일 동안 유효).`);
+
+  return (
+    <section className="card p-5">
+      <CardHead icon={Users} title="멤버" sub="함께 관리할 사람을 초대합니다. 관리자는 입력·수정, 조회는 보기만 합니다." />
+      <ul className="divide-y divide-slate-100 text-sm">
+        {data?.members.map((m) => (
+          <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5">
+            <div className="min-w-0 flex-1">
+              <div className="font-medium">{m.name ?? "—"} {m.me && <span className="text-xs text-slate-400">(나)</span>}</div>
+              <div className="truncate text-xs text-slate-500">{m.email} · 최근 로그인 {m.last_login_at ? kst(m.last_login_at) : "—"}</div>
+            </div>
+            {m.role === "owner" ? <span className="chip bg-blue-50 text-blue-700">대표</span> : (
+              <>
+                <select className="field py-1 text-xs" aria-label={`${m.name ?? m.email} 권한`} value={m.role} disabled={busy}
+                  onChange={(e) => run(() => api(`/api/v1/members/${m.id}`, json("PATCH", { role: e.target.value })),
+                    `${m.name ?? m.email} 님의 권한을 ${ROLE_NAME[e.target.value as "manager" | "viewer"]}(으)로 바꿨습니다.`)}>
+                  <option value="manager">관리자</option>
+                  <option value="viewer">조회</option>
+                </select>
+                <button type="button" className="btn-secondary btn-sm text-red-700 hover:bg-red-50" disabled={busy}
+                  onClick={() => window.confirm(`${m.name ?? m.email} 님을 내보낼까요? 그 계정은 삭제되고 바로 로그아웃됩니다. 입력한 기록은 남습니다.`)
+                    && run(() => api(`/api/v1/members/${m.id}`, json("DELETE")), "멤버를 내보냈습니다.")}>내보내기</button>
+              </>
+            )}
+          </li>
+        ))}
+        {data?.invitations.map((i) => (
+          <li key={i.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5">
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium text-slate-600">{i.email}</div>
+              <div className="text-xs text-slate-500">{ROLE_NAME[i.role]} · {i.expired ? "초대 만료" : `초대 대기 — ${kst(i.expires_at)}까지`}</div>
+            </div>
+            <span className={`chip ${i.expired ? "bg-slate-100 text-slate-500" : "bg-amber-50 text-amber-800"}`}>{i.expired ? "만료" : "대기"}</span>
+            <button type="button" className="btn-secondary btn-sm" disabled={busy} onClick={() => invite(i.email, i.role)}>다시 보내기</button>
+            <button type="button" className="btn-secondary btn-sm" disabled={busy}
+              onClick={() => run(() => api(`/api/v1/members/invitations/${i.id}/revoke`, json("POST")), "초대를 취소했습니다.")}>취소</button>
+          </li>
+        ))}
+      </ul>
+      <form className="mt-3 grid gap-2 border-t border-slate-100 pt-4 sm:grid-cols-[minmax(0,1fr)_auto_auto]"
+        onSubmit={(e) => { e.preventDefault(); invite(email.trim(), role); }}>
+        <input className="field w-full min-w-0" type="email" placeholder="초대할 이메일" aria-label="초대할 이메일"
+          value={email} onChange={(e) => setEmail(e.target.value)} />
+        <select className="field" aria-label="초대 권한" value={role} onChange={(e) => setRole(e.target.value as "manager" | "viewer")}>
+          <option value="manager">관리자 (입력·수정)</option>
+          <option value="viewer">조회 (보기만)</option>
+        </select>
+        <button type="submit" className="btn-primary whitespace-nowrap" disabled={busy || !email.includes("@")}>
+          <UserPlus className="h-4 w-4" /> 초대 보내기</button>
+      </form>
       <Msg m={msg} />
     </section>
   );

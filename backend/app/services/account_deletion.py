@@ -16,7 +16,7 @@ from pathlib import Path
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from app.models import AuditLog, AuthSession, Base, EmailToken, LeaseDocument, Organization, User
+from app.models import AuditLog, AuthSession, Base, EmailToken, Invitation, LeaseDocument, Organization, User
 from app.services import backup, storage
 
 
@@ -26,6 +26,7 @@ def _detach_user(session: Session, user_ids: list[uuid.UUID]) -> None:
                                            AuditLog.entity_id.in_([str(u) for u in user_ids])))
     session.execute(update(AuditLog).where(AuditLog.user_id.in_(user_ids)).values(user_id=None))
     session.execute(update(LeaseDocument).where(LeaseDocument.verified_by.in_(user_ids)).values(verified_by=None))
+    session.execute(update(Invitation).where(Invitation.invited_by.in_(user_ids)).values(invited_by=None))
     session.execute(delete(AuthSession).where(AuthSession.user_id.in_(user_ids)))
     session.execute(delete(EmailToken).where(EmailToken.user_id.in_(user_ids)))
 
@@ -58,6 +59,7 @@ def delete_organization(session: Session, organization_id: uuid.UUID) -> dict:
             counts[table.name] = len(ids)
     session.execute(delete(User).where(User.id.in_(user_ids)))
     counts["users"] = len(user_ids)
+    session.execute(delete(Invitation).where(Invitation.organization_id == organization_id))
     session.execute(delete(Organization).where(Organization.id == organization_id))
 
     # 파기 기록 — 개인정보 없이 건수만 (사업장 id 는 무작위 값이라 이제 아무것도 가리키지 않음)

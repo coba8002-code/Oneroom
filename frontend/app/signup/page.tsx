@@ -23,8 +23,11 @@ export default function SignupPage() {
   const longEnough = f.password.length >= 10;
   const mixed = /\d/.test(f.password) && /[^\d]/.test(f.password);
   const same = f.password !== "" && f.password === f.password2;
+  // 서버 규칙과 같게: 4자 이상인 이메일 아이디는 비밀번호에 넣을 수 없음 (backend/app/auth.py password_problem)
+  const local = f.email.trim().split("@")[0].toLowerCase();
+  const noId = local.length < 4 || !f.password.toLowerCase().includes(local);
   const all = agree.terms && agree.privacy && agree.marketing;
-  const ready = f.name && f.email && f.organization_name && longEnough && mixed && same && agree.terms && agree.privacy;
+  const ready = f.name && f.email && f.organization_name && longEnough && mixed && same && noId && agree.terms && agree.privacy;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -80,6 +83,7 @@ export default function SignupPage() {
           <Rule ok={longEnough}>10자 이상</Rule>
           <Rule ok={mixed}>문자와 숫자 함께</Rule>
           <Rule ok={same}>두 번 같게</Rule>
+          {local.length >= 4 && <Rule ok={f.password !== "" && noId}>이메일 아이디 넣지 않기</Rule>}
         </ul>
 
         <fieldset className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm">
