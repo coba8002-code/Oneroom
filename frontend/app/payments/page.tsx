@@ -17,8 +17,8 @@ import {
 } from "@/lib/api";
 
 const btn =
-  "rounded-md px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50";
-const select = "rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm";
+  "btn";
+const select = "field py-1.5";
 const LEASE_CATEGORIES: Category[] = ["rent", "deposit_in"];
 
 export default function PaymentsPage() {
@@ -93,14 +93,17 @@ export default function PaymentsPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="mr-auto text-xl font-semibold">수납</h1>
+        <div className="mr-auto">
+          <h1 className="page-title">임대료 관리</h1>
+          <p className="page-sub">통장 입금을 호실별 월세와 맞추고, 미수를 확인합니다.</p>
+        </div>
         {orgs && orgs.length > 1 && (
           <select className={select} value={orgId} onChange={(e) => setOrgId(e.target.value)}>
             {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         )}
         <button type="button" disabled={busy || !orgId} onClick={runMatching}
-          className={`${btn} bg-slate-900 text-white hover:bg-slate-700`}>
+          className={`${btn} bg-blue-600 text-white hover:bg-blue-700`}>
           입금 매칭 실행
         </button>
       </div>
@@ -113,8 +116,8 @@ export default function PaymentsPage() {
         return `${file.name}: 전체 ${r.total_rows}건 · 새로 저장 ${r.inserted} · 이미 있음 ${r.duplicates}${errs}. 이어서 '입금 매칭 실행'을 누르세요.`;
       })} />
 
-      {notice && <p className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
-      {error && <p className="whitespace-pre-line rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      {notice && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
+      {error && <p className="whitespace-pre-line rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
 
       <ReviewQueue queue={queue} leases={leases} busy={busy}
         onDecide={(txnId, body) => act(() => api(`/api/v1/transactions/${txnId}/decision?${q}`, {
@@ -124,9 +127,9 @@ export default function PaymentsPage() {
       {recv && <ReceivablesView recv={recv} asOf={asOf} onAsOf={setAsOf} />}
 
       <section className="space-y-2">
-        <h2 className="font-semibold">최근 확정</h2>
+        <h2 className="card-title">최근 확정</h2>
         {recent.length === 0 && <p className="text-sm text-slate-500">아직 없습니다.</p>}
-        <ul className="divide-y rounded-lg border bg-white">
+        <ul className="divide-y card">
           {recent.map((a) => (
             <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm">
               <span className="tabular-nums text-slate-500">{kst(a.transaction.occurred_at)}</span>
@@ -157,7 +160,7 @@ function ReviewQueue({ queue, leases, busy, onDecide }: {
 }) {
   return (
     <section className="space-y-2">
-      <h2 className="font-semibold">
+      <h2 className="card-title">
         검토 대기 <span className="text-slate-500">{queue.length}</span>
       </h2>
       <p className="text-xs text-slate-500">
@@ -189,7 +192,7 @@ function QueueCard({ item, leases, busy, onDecide }: {
   const needsLease = LEASE_CATEGORIES.includes(category);
 
   return (
-    <div className="rounded-lg border bg-white p-3">
+    <div className="card p-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
         <span className="tabular-nums text-slate-500">{kst(t.occurred_at)}</span>
         <span className="font-medium">{t.counterparty ?? "(입금자 없음)"}</span>
@@ -229,7 +232,7 @@ function QueueCard({ item, leases, busy, onDecide }: {
           </label>
         )}
         <button type="button" disabled={busy || (needsLease && !leaseId)}
-          className={`${btn} ml-auto bg-slate-900 text-white hover:bg-slate-700`}
+          className={`${btn} ml-auto bg-blue-600 text-white hover:bg-blue-700`}
           onClick={() => onDecide(t.id, {
             lease_id: needsLease ? leaseId : null, category, remember_alias: needsLease && remember,
           })}>
@@ -253,7 +256,7 @@ function ReceivablesView({ recv, asOf, onAsOf }: {
             onChange={(e) => e.target.value && onAsOf(e.target.value)} />
         </label>
       </div>
-      <div className="rounded-md bg-slate-100 p-3 text-xs text-slate-700">
+      <div className="rounded-xl bg-slate-100 p-3 text-xs text-slate-700">
         은행 내역 최신 거래: <b>{kst(recv.bank_data_as_of)}</b>
         {recv.pending_review > 0 && (
           <> · 검토 대기 <b>{recv.pending_review}건</b> — 확정 전에는 아래 미수가 실제로는 납부됐을 수 있습니다.</>
@@ -263,7 +266,7 @@ function ReceivablesView({ recv, asOf, onAsOf }: {
       {recv.items.length === 0 ? (
         <p className="text-sm text-slate-500">납부일이 지난 미수가 없습니다.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border bg-white">
+        <div className="overflow-x-auto card">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
               <tr>
@@ -309,7 +312,7 @@ function BankImport({ orgId, busy, onFile }: {
   }, [orgId]);
   if (!accounts.length) return null;
   return (
-    <section className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed bg-white p-3 text-sm">
+    <section className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-sm">
       <span className="mr-auto text-slate-600">
         은행 거래내역 가져오기 <span className="text-xs text-slate-500">(CSV·XLSX, 같은 파일을 다시 올려도 중복 없음)</span>
       </span>

@@ -36,6 +36,12 @@ def test_after_matching(client, onboarded):
     d = _dash(client, org, "2026-11-26")
     st = {u["unit_no"]: u["charge_status"] for u in d["units"]}
     assert st["101"] == "paid" and st["103"] == "open" and st["203"] is None
+    u = {x["unit_no"]: x for x in d["units"]}
+    assert (u["101"]["paid_on"], u["101"]["due_date"]) == ("2026-11-01", "2026-11-01")
+    assert (u["303"]["due_date"], u["103"]["paid_on"]) == ("2026-11-30", None)  # 31일 → 말일, 미납은 완납일 없음
+    recent = d["recent_transactions"]
+    assert len(recent) == 6 and recent[0]["label"] == "303호 월세 입금" and recent[0]["direction"] == "in"
+    assert any(r["label"] == "마트 · 확인 전" and not r["confirmed"] for r in recent)
     assert d["money"]["rent_charged"] == 3_610_000
     assert d["money"]["rent_received"] == 2_260_000
     # 26일 기준 납부일 지난 미수: 103(10일) · 301(25일)

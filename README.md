@@ -89,6 +89,25 @@ npm run dev                     # http://localhost:3000/onboarding
   **"확인 필요"**로 표시 (PRD §4 — 납부일 경과만으로 미납 단정 금지)
 - **세금 일정**: 일반 법정 일정만(사업장현황신고·종소세·재산세·중간예납·종부세). 해당 여부는 판정하지 않음
 
+| 계약서 등록 (촬영·파일) → 클라우드 OCR → 관리자 검수 → 원장 반영 | `/contracts` 화면 · `POST /api/v1/leases/{id}/documents` · `POST /api/v1/documents/{id}/verify` |
+
+### 계약서 OCR (NAVER CLOVA OCR)
+
+1. NAVER Cloud 콘솔 → CLOVA OCR → **General** 도메인 생성 → API Gateway 연동 → Invoke URL · Secret Key 발급
+2. `backend/.env` 에 `ROOMAX_CLOVA_OCR_URL` · `ROOMAX_CLOVA_OCR_SECRET` 입력 후 서버 재시작
+3. 설정 전에도 계약서 업로드·검수는 됩니다 (값을 직접 입력)
+
+- 계약서 원본은 서버에 **암호화 저장** (`ROOMAX_UPLOAD_DIR`, 키는 `ROOMAX_FIELD_KEY`) — 백업 대상에 포함하세요
+- OCR 은 보증금 · 월세 · 납부일 · 계약 시작/종료만 **후보**로 뽑습니다 (근거 문장 표시, 이름·연락처는 뽑지 않음, 못 찾으면 빈칸)
+- **검수 완료를 눌러야만** 계약(원장)에 반영되고 전후 값이 `audit_logs` 에 남습니다
+- 월세·납부일 변경은 다음에 만드는 청구부터 적용, 이미 받은 보증금은 문서로 바꿀 수 없습니다
+
+## 화면 디자인
+
+- 데스크톱: 남색 사이드바 + 카드형 대시보드 / 모바일: 상단 바 + 하단 탭(홈·임대료·운영비·계약·더보기)
+- 글꼴 Pretendard(로컬 번들), 아이콘 lucide-react, 공통 스타일은 `frontend/app/globals.css` 의 `.card` `.btn-primary` `.field` 등
+- 아직 없는 메뉴(알림·메시지, 세무, 전월세 시뮬레이션, 보고서, 설정)는 **'준비 중'** 으로만 표시
+
 ## 다음 단계
 
-계약서 OCR 검수 → 백업/복구.
+백업/복구 → (2차) 문자·알림톡, 세무 준비, 전월세 시뮬레이션.

@@ -79,9 +79,9 @@ function downloadTemplate() {
 }
 
 const input =
-  "w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 disabled:bg-slate-100";
+  "field w-full py-1.5";
 const btn =
-  "rounded-md px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50";
+  "btn";
 
 export default function OnboardingPage() {
   const [propertyName, setPropertyName] = useState("");
@@ -149,14 +149,14 @@ export default function OnboardingPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">초기 등록</h1>
+        <h1 className="page-title">건물·호실 등록</h1>
         <p className="mt-1 text-sm text-slate-600">
           건물과 호실, 현재 계약(월세·보증금·납부일)을 입력합니다. 빈 칸은 나중에 채워도 됩니다.
           임차인이 없는 임대 호실은 공실로 등록됩니다.
         </p>
       </div>
 
-      <section className="grid gap-3 rounded-lg border bg-white p-4 sm:grid-cols-2">
+      <section className="grid gap-3 card p-4 sm:grid-cols-2">
         <label className="text-sm">
           <span className="mb-1 block text-slate-600">건물 이름</span>
           <input className={input} value={propertyName} onChange={(e) => setPropertyName(e.target.value)}
@@ -168,18 +168,18 @@ export default function OnboardingPage() {
         </label>
       </section>
 
-      <section className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed bg-white p-4 text-sm">
+      <section className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm">
         <span className="mr-auto text-slate-600">엑셀로 정리해 두었다면 CSV로 불러올 수 있습니다.</span>
         <button type="button" className={`${btn} border bg-white hover:bg-slate-50`} onClick={downloadTemplate}>
           빈 양식 받기
         </button>
-        <label className={`${btn} cursor-pointer bg-slate-900 text-white hover:bg-slate-700`}>
+        <label className={`${btn} cursor-pointer bg-blue-600 text-white hover:bg-blue-700`}>
           CSV 불러오기
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
             onChange={(e) => e.target.files?.[0] && onCsv(e.target.files[0])} />
         </label>
         {csvErrors.length > 0 && (
-          <ul className="w-full list-disc space-y-0.5 rounded-md bg-amber-50 p-3 pl-6 text-amber-900">
+          <ul className="w-full list-disc space-y-0.5 rounded-xl bg-amber-50 p-3 pl-6 text-amber-900">
             {csvErrors.map((e) => (
               <li key={e.row}>{e.row}행: {e.message}</li>
             ))}
@@ -201,13 +201,13 @@ export default function OnboardingPage() {
         </button>
       </section>
 
-      <section className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-3 border-t bg-white/95 px-4 py-3 backdrop-blur">
+      <section className="sticky bottom-[60px] -mx-4 flex rounded-t-2xl lg:bottom-0 flex-wrap items-center gap-3 border-t bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mr-auto text-sm text-slate-600">
           임대 {rental}실 · 입주 {occupied} · 월세 합계 <b className="text-slate-900">{won(monthlyRent)}</b>
         </div>
         {error && <p className="w-full whitespace-pre-line text-sm text-red-700 sm:order-first">{error}</p>}
         <button type="button" disabled={busy} onClick={onSubmit}
-          className={`${btn} bg-slate-900 text-white hover:bg-slate-700`}>
+          className={`${btn} bg-blue-600 text-white hover:bg-blue-700`}>
           {busy ? "등록 중…" : "등록"}
         </button>
       </section>
@@ -227,10 +227,10 @@ function UnitCard({ row: r, index, onChange, onRemove }: {
     </label>
   );
   return (
-    <div className={`rounded-lg border bg-white p-3 ${owner ? "border-slate-300 bg-slate-50" : ""}`}>
+    <div className={`card p-3 ${owner ? "border-slate-300 bg-slate-50" : ""}`}>
       <div className="mb-2 flex items-center gap-2 text-sm">
         <span className="font-medium text-slate-500">#{index + 1}</span>
-        <select className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm" value={r.use_type}
+        <select className="field py-1" value={r.use_type}
           onChange={(e) => onChange({ use_type: e.target.value as UseType })}>
           <option value="rental">임대</option>
           <option value="owner">주인세대</option>
@@ -302,11 +302,11 @@ function NextSteps({ result }: { result: OnboardingOut }) {
 
       {error && <p className="whitespace-pre-line text-sm text-red-700">{error}</p>}
 
-      <section className="space-y-3 rounded-lg border bg-white p-4">
-        <h2 className="font-semibold">1. 월 청구 만들기</h2>
+      <section className="space-y-3 card p-4">
+        <h2 className="card-title">1. 월 청구 만들기</h2>
         <div className="flex items-center gap-2">
           <input type="month" className={`${input} w-auto`} value={period} onChange={(e) => setPeriod(e.target.value)} />
-          <button type="button" className={`${btn} bg-slate-900 text-white hover:bg-slate-700`} onClick={generate}>
+          <button type="button" className={`${btn} bg-blue-600 text-white hover:bg-blue-700`} onClick={generate}>
             청구 생성
           </button>
         </div>
@@ -331,8 +331,8 @@ function NextSteps({ result }: { result: OnboardingOut }) {
         )}
       </section>
 
-      <section className="space-y-3 rounded-lg border bg-white p-4">
-        <h2 className="font-semibold">2. 은행 거래내역 가져오기</h2>
+      <section className="space-y-3 card p-4">
+        <h2 className="card-title">2. 은행 거래내역 가져오기</h2>
         <p className="text-xs text-slate-500">
           인터넷뱅킹에서 받은 CSV 또는 XLSX. 같은 파일을 다시 올려도 거래가 중복되지 않습니다.
           입금 매칭은 다음 단계에서 검토 후 확정합니다.
@@ -343,11 +343,11 @@ function NextSteps({ result }: { result: OnboardingOut }) {
           <div className="text-sm">
             <p>전체 {imported.total_rows}건 · 새로 저장 <b>{imported.inserted}</b> · 이미 있음 {imported.duplicates}</p>
             {imported.errors.length > 0 && (
-              <ul className="mt-2 list-disc rounded-md bg-amber-50 p-3 pl-6 text-amber-900">
+              <ul className="mt-2 list-disc rounded-xl bg-amber-50 p-3 pl-6 text-amber-900">
                 {imported.errors.map((e) => <li key={e.row}>{e.row}행: {e.message}</li>)}
               </ul>
             )}
-            <a href="/payments" className={`${btn} mt-3 inline-block bg-slate-900 text-white hover:bg-slate-700`}>
+            <a href="/payments" className={`${btn} mt-3 inline-block bg-blue-600 text-white hover:bg-blue-700`}>
               입금 매칭하러 가기 →
             </a>
           </div>

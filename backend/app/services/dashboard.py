@@ -4,12 +4,55 @@ from __future__ import annotations
 import uuid
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Charge, Deposit, Lease, Property, Tenant, Unit
+from app.models import Charge, Deposit, Lease, Payment, Property, Tenant, Transaction, TransactionAllocation, Unit
 from app.services import ledger, receivables, reports, tax_calendar
+from app.services.charges import due_date_for
 from app.services.expenses import kst_date
+from app.services.matching import org_transactions
+
+LABEL = {"rent": "월세", "deposit_in": "보증금 입금", "deposit_out": "보증금 반환", "personal": "생활비",
+         "owner_household": "주인세대", "other": "기타", "common_electricity": "공용 전기료", "water": "수도료",
+         "cleaning": "청소비", "repair": "수리비", "other_operating": "공용 기타"}
+RECENT_LIMIT = 6
+
+
+def _paid_on(session: Session, charge_id) -> date | None:
+    """이 청구에 들어간 입금 중 가장 늦은 거래일 (완납일)."""
+    latest = session.scalar(
+        select(func.max(Transaction.occurred_at))
+        .join(TransactionAllocation, TransactionAllocation.transaction_id == Transaction.id)
+        .join(Payment, Payment.transaction_allocation_id == TransactionAllocation.id)
+        .where(Payment.charge_id == charge_id))
+    return kst_date(latest) if latest else None
+
+
+def _recent(session: Session, organization_id, unit_by_lease: dict) -> list[dict]:
+    out = []
+    for t in session.scalars(org_transactions(organization_id)
+                             .order_by(Transaction.occurred_at.desc()).limit(RECENT_LIMIT)):
+        allocs = session.scalars(select(TransactionAllocation).where(
+            TransactionAllocation.transaction_id == t.id,
+            TransactionAllocation.review_status == "approved")).all()
+        who = t.counterparty or t.description or ""
+        if not allocs:
+            label = f"{who} · 확인 전"
+        else:
+            a = allocs[0]
+            unit = unit_by_lease.get(a.lease_id)
+            if a.category in ("rent", "deposit_in", "deposit_out") and unit:
+                label = f"{unit}호 {LABEL[a.category]}" + (" 입금" if a.category == "rent" else "")
+            else:
+                label = LABEL.get(a.category, a.category)
+                if len(allocs) > 1:
+                    label += f" 외 {len(allocs) - 1}"
+                if who:
+                    label += f" ({who})"
+        out.append({"occurred_at": t.occurred_at, "direction": t.direction, "amount": t.amount,
+                    "label": label, "confirmed": bool(allocs)})
+    return out
 
 STALE_BANK_DAYS = 7
 LEASE_END_WINDOW = 60
@@ -32,14 +75,16 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
     unit_rows = []
     for u in units:
         row = {"unit_no": u.unit_no, "floor": u.floor, "use_type": u.use_type, "status": u.status,
-               "tenant_name": None, "rent": None, "due_day": None, "charge_status": None,
-               "outstanding": None, "lease_end": None}
+               "tenant_name": None, "rent": None, "due_day": None, "due_date": None, "charge_status": None,
+               "outstanding": None, "paid_on": None, "lease_end": None}
         if u.id in leases:
             lease, name = leases[u.id]
             c = charges.get(lease.id)
             row.update(tenant_name=name, rent=lease.rent, due_day=lease.due_day, lease_end=lease.end_date,
+                       due_date=c.due_date if c else due_date_for(period, lease.due_day),
                        charge_status=c.status if c else "none",
-                       outstanding=(c.amount - ledger.paid_amount(session, c.id)) if c else None)
+                       outstanding=(c.amount - ledger.paid_amount(session, c.id)) if c else None,
+                       paid_on=_paid_on(session, c.id) if c and c.status == "paid" else None)
         unit_rows.append(row)
 
     counts = {
@@ -135,8 +180,12 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
             "overdue_count": len(overdue),
             "operating_total": month["operating_total"],
             "noi": month["noi"],
+            "non_operating_total": sum(month["excluded"][k] for k in ("personal", "owner_household")),
             "complete": month["complete"],
         },
+        "recent_transactions": _recent(
+            session, organization_id,
+            {lease.id: next(u.unit_no for u in units if u.id == lease.unit_id) for lease, _ in leases.values()}),
         "due_soon": due_soon,
         "lease_endings": lease_endings,
         "tax_events": tax_calendar.upcoming(as_of),

@@ -22,9 +22,9 @@ import {
 } from "@/lib/api";
 import { useOrg } from "@/lib/useOrg";
 
-const btn = "rounded-md px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50";
-const primary = `${btn} bg-slate-900 text-white hover:bg-slate-700`;
-const field = "rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm";
+const btn = "btn";
+const primary = `${btn} bg-blue-600 text-white hover:bg-blue-700`;
+const field = "field py-1.5";
 const EXPENSE_CATS: ExpenseCategory[] = [...OPERATING, ...NON_OPERATING];
 const OUT_CATS: OutCategory[] = [...EXPENSE_CATS, "deposit_out"];
 
@@ -96,7 +96,10 @@ export default function ExpensesPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="mr-auto text-xl font-semibold">운영비</h1>
+        <div className="mr-auto">
+          <h1 className="page-title">지출·운영비</h1>
+          <p className="page-sub">통장 출금을 운영비·주인세대·생활비로 나누고 순운영수익을 계산합니다.</p>
+        </div>
         {orgs && orgs.length > 1 && (
           <select className={field} value={orgId} onChange={(e) => setOrgId(e.target.value)}>
             {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
@@ -112,15 +115,15 @@ export default function ExpensesPage() {
         </button>
       </div>
 
-      {notice && <p className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
+      {notice && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
       {(error || orgError) && (
-        <p className="whitespace-pre-line rounded-md bg-red-50 p-3 text-sm text-red-800">{error ?? orgError}</p>
+        <p className="whitespace-pre-line rounded-xl bg-red-50 p-3 text-sm text-red-800">{error ?? orgError}</p>
       )}
 
       {report && <Report report={report} period={period} onPeriod={setPeriod} />}
 
       <section className="space-y-2">
-        <h2 className="font-semibold">출금 검토 대기 <span className="text-slate-500">{queue.length}</span></h2>
+        <h2 className="card-title">출금 검토 대기 <span className="text-slate-500">{queue.length}</span></h2>
         <p className="text-xs text-slate-500">
           &lsquo;기억&rsquo;한 거래처만 자동 확정됩니다. 한국전력·마트 같은 이름만으로는 공용/주인세대/생활비를
           알 수 없어 제안까지만 합니다. 섞인 거래는 나눠서 확정하세요.
@@ -138,9 +141,9 @@ export default function ExpensesPage() {
         onAdd={(body) => act(() => post(`/api/v1/expenses?${q}`, body).then(() => undefined), "현금 지출을 기록했습니다.")} />
 
       <section className="space-y-2">
-        <h2 className="font-semibold">{period} 지출 내역</h2>
+        <h2 className="card-title">{period} 지출 내역</h2>
         {list.length === 0 && <p className="text-sm text-slate-500">없습니다.</p>}
-        <ul className="divide-y rounded-lg border bg-white">
+        <ul className="divide-y card">
           {list.map((e) => (
             <li key={e.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm">
               <span className="tabular-nums text-slate-500">{e.spent_on}</span>
@@ -159,9 +162,9 @@ export default function ExpensesPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="font-semibold">최근 확정 출금</h2>
+        <h2 className="card-title">최근 확정 출금</h2>
         {confirmed.length === 0 && <p className="text-sm text-slate-500">아직 없습니다.</p>}
-        <ul className="divide-y rounded-lg border bg-white">
+        <ul className="divide-y card">
           {confirmed.map((c) => (
             <li key={c.transaction.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm">
               <span className="tabular-nums text-slate-500">{kst(c.transaction.occurred_at)}</span>
@@ -187,9 +190,9 @@ export default function ExpensesPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="font-semibold">기억한 거래처 규칙</h2>
+        <h2 className="card-title">기억한 거래처 규칙</h2>
         {rules.length === 0 && <p className="text-sm text-slate-500">없습니다. 확정할 때 &lsquo;기억&rsquo;을 고르면 생깁니다.</p>}
-        <ul className="divide-y rounded-lg border bg-white">
+        <ul className="divide-y card">
           {rules.map((r) => (
             <li key={r.id} className="flex flex-wrap items-center gap-3 p-3 text-sm">
               <span className="font-medium">{r.label}</span>
@@ -220,13 +223,13 @@ function Report({ report: r, period, onPeriod }: {
   report: MonthlyReport; period: string; onPeriod: (p: string) => void;
 }) {
   return (
-    <section className="space-y-3 rounded-lg border bg-white p-4">
+    <section className="card space-y-3 p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="mr-auto font-semibold">월 결산</h2>
         <input type="month" className={field} value={period} onChange={(e) => e.target.value && onPeriod(e.target.value)} />
       </div>
       {!r.complete && (
-        <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">
+        <p className="rounded-xl bg-amber-50 p-2 text-xs text-amber-900">
           확정 전 수치 — 이 달 미확정 거래: 입금 {r.unconfirmed_in}건 · 출금 {r.unconfirmed_out}건.
           수납·운영비 검토를 마치면 확정 수치가 됩니다.
         </p>
@@ -265,8 +268,8 @@ function Report({ report: r, period, onPeriod }: {
 
 function Stat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div className={`rounded-md p-3 ${strong ? "bg-slate-900 text-white" : "bg-slate-50"}`}>
-      <div className={`text-xs ${strong ? "text-slate-300" : "text-slate-500"}`}>{label}</div>
+    <div className={`rounded-xl p-3 ${strong ? "bg-blue-600 text-white" : "bg-slate-50"}`}>
+      <div className={`text-xs ${strong ? "text-blue-100" : "text-slate-500"}`}>{label}</div>
       <div className="mt-0.5 font-semibold tabular-nums">{value}</div>
     </div>
   );
@@ -296,7 +299,7 @@ function OutCard({ item, units, leases, busy, onDecide }: {
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   return (
-    <div className="rounded-lg border bg-white p-3">
+    <div className="card p-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
         <span className="tabular-nums text-slate-500">{kst(t.occurred_at)}</span>
         <span className="font-medium">{t.counterparty ?? "(거래처 없음)"}</span>
@@ -393,8 +396,8 @@ function ManualExpense({ units, busy, onAdd }: {
   const [memo, setMemo] = useState("");
   const [unitId, setUnitId] = useState("");
   return (
-    <section className="space-y-2 rounded-lg border bg-white p-4">
-      <h2 className="font-semibold">현금 지출 기록</h2>
+    <section className="space-y-2 card p-4">
+      <h2 className="card-title">현금 지출 기록</h2>
       <p className="text-xs text-slate-500">통장을 거치지 않은 지출만 여기에. 통장 출금은 위 검토 대기에서 확정하세요.</p>
       <div className="flex flex-wrap items-center gap-2">
         <input type="date" className={field} value={spentOn} onChange={(e) => setSpentOn(e.target.value)} aria-label="날짜" />

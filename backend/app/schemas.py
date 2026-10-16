@@ -289,8 +289,10 @@ class DashUnit(BaseModel):
     tenant_name: str | None
     rent: int | None
     due_day: int | None
+    due_date: date | None  # 이번 달 납부일 (말일 보정)
     charge_status: str | None  # paid | partial | open | none(청구 미생성) | None(공실·주인세대)
     outstanding: int | None
+    paid_on: date | None  # 완납일 (마지막 입금 거래일, KST)
     lease_end: date | None
 
 
@@ -309,7 +311,16 @@ class DashMoney(BaseModel):
     overdue_count: int
     operating_total: int
     noi: int
+    non_operating_total: int  # 생활비 + 주인세대 (NOI 제외)
     complete: bool
+
+
+class RecentTransaction(BaseModel):
+    occurred_at: datetime
+    direction: str
+    amount: int
+    label: str
+    confirmed: bool
 
 
 class DueSoon(BaseModel):
@@ -350,6 +361,7 @@ class DashboardOut(BaseModel):
     counts: DashCounts
     units: list[DashUnit]
     money: DashMoney
+    recent_transactions: list[RecentTransaction]
     due_soon: list[DueSoon]
     lease_endings: list[LeaseEnding]
     tax_events: list[TaxEventOut]

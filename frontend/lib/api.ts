@@ -235,8 +235,10 @@ export interface Dashboard {
     tenant_name: string | null;
     rent: number | null;
     due_day: number | null;
+    due_date: string | null;
     charge_status: "paid" | "partial" | "open" | "waived" | "none" | null;
     outstanding: number | null;
+    paid_on: string | null;
     lease_end: string | null;
   }[];
   money: {
@@ -246,8 +248,10 @@ export interface Dashboard {
     overdue_count: number;
     operating_total: number;
     noi: number;
+    non_operating_total: number;
     complete: boolean;
   };
+  recent_transactions: { occurred_at: string; direction: "in" | "out"; amount: number; label: string; confirmed: boolean }[];
   due_soon: { unit_no: string; due_date: string; outstanding: number }[];
   lease_endings: {
     unit_no: string; tenant_name: string; end_date: string; days_left: number; deposit_to_return: number | null;
@@ -256,4 +260,53 @@ export interface Dashboard {
     name: string; start: string; end: string; note: string; url: string; in_progress: boolean; days_until_end: number;
   }[];
   attention: { level: "warn" | "info"; kind: string; message: string; href: string }[];
+}
+
+/** 450000 → "45만원", 425000 → "42.5만원" */
+export const manwon = (n: number | null | undefined) => {
+  if (n == null) return "—";
+  const v = n / 10000;
+  return `${Number.isInteger(v) ? v.toLocaleString("ko-KR") : v.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}만원`;
+};
+
+/** "2026-11-05" → "11.05" */
+export const mmdd = (iso: string | null | undefined) => (iso ? iso.slice(5, 10).replace("-", ".") : "—");
+
+export interface DocumentSummary {
+  id: string;
+  original_name: string | null;
+  created_at: string;
+  ocr_status: "not_configured" | "done" | "failed";
+  verified_at: string | null;
+}
+
+export interface Contract {
+  lease_id: string;
+  unit_no: string;
+  tenant_name: string;
+  deposit: number;
+  rent: number;
+  due_day: number;
+  start_date: string;
+  end_date: string | null;
+  documents: DocumentSummary[];
+}
+
+export type ContractField = "deposit" | "rent" | "due_day" | "start_date" | "end_date";
+
+export interface DocumentDetail {
+  id: string;
+  lease_id: string;
+  unit_no: string;
+  original_name: string | null;
+  content_type: string | null;
+  created_at: string;
+  ocr_status: "not_configured" | "done" | "failed";
+  ocr_provider: string | null;
+  ocr_error: string | null;
+  ocr_text: string | null;
+  fields: Record<ContractField, { value: number | string | null; evidence: string | null }> | null;
+  current: Record<ContractField, number | string | null>;
+  verified_at: string | null;
+  verified_fields: (Record<ContractField, number | string | null> & { changed: ContractField[] }) | null;
 }
