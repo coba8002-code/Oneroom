@@ -1,0 +1,108 @@
+from __future__ import annotations
+
+import uuid
+from datetime import date
+from typing import Literal
+
+from pydantic import BaseModel, Field, model_validator
+
+
+class PropertyIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    type: Literal["multi_household", "apartment", "rural_house"] = "multi_household"
+    address: str | None = None
+
+
+class UnitIn(BaseModel):
+    unit_no: str = Field(min_length=1, max_length=20)
+    floor: int | None = None
+    area_m2: float | None = Field(default=None, ge=0)
+    use_type: Literal["rental", "owner"] = "rental"
+    # 임차인이 있으면 계약 생성. 없으면 공실.
+    tenant_name: str | None = None
+    tenant_phone: str | None = None
+    deposit: int | None = Field(default=None, ge=0)
+    rent: int | None = Field(default=None, ge=0)
+    due_day: int | None = Field(default=None, ge=1, le=31)
+    start_date: date | None = None
+    end_date: date | None = None
+    deposit_received_on: date | None = None
+
+    @model_validator(mode="after")
+    def _lease_fields(self) -> UnitIn:
+        if self.use_type == "owner":
+            if self.tenant_name:
+                raise ValueError(f"{self.unit_no}: 주인세대에는 임차인을 넣을 수 없습니다")
+            return self
+        if self.tenant_name:
+            missing = [
+                label
+                for label, v in (("월세", self.rent), ("납부일", self.due_day), ("계약시작", self.start_date))
+                if v is None
+            ]
+            if missing:
+                raise ValueError(f"{self.unit_no}: 계약을 만들려면 {', '.join(missing)} 이(가) 필요합니다")
+            if self.end_date and self.start_date and self.end_date < self.start_date:
+                raise ValueError(f"{self.unit_no}: 계약종료가 계약시작보다 빠릅니다")
+        return self
+
+
+class OnboardingIn(BaseModel):
+    organization_name: str = Field(default="내 임대사업", max_length=200)
+    property: PropertyIn
+    bank_account_alias: str = Field(default="주거래 통장", max_length=100)
+    units: list[UnitIn] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _unique_units(self) -> OnboardingIn:
+        seen: set[str] = set()
+        for u in self.units:
+            if u.unit_no in seen:
+                raise ValueError(f"호실 번호 중복: {u.unit_no}")
+            seen.add(u.unit_no)
+        return self
+
+
+class OnboardingOut(BaseModel):
+    organization_id: uuid.UUID
+    property_id: uuid.UUID
+    bank_account_id: uuid.UUID
+    units: int
+    leases: int
+    vacant: int
+    deposits_total: int  # 반환의무 합계 (매출 아님)
+
+
+class RowError(BaseModel):
+    row: int  # 파일 기준 행 번호 (헤더 = 1)
+    message: str
+
+
+class CsvPreviewOut(BaseModel):
+    units: list[UnitIn]
+    errors: list[RowError]
+
+
+class ChargeOut(BaseModel):
+    id: uuid.UUID
+    lease_id: uuid.UUID
+    unit_no: str
+    period: str
+    due_date: date
+    amount: int
+    status: str
+
+
+class GenerateChargesOut(BaseModel):
+    period: str
+    created: int
+    already_existed: int
+    charges: list[ChargeOut]
+
+
+class ImportOut(BaseModel):
+    batch: str
+    total_rows: int
+    inserted: int
+    duplicates: int
+    errors: list[RowError]
