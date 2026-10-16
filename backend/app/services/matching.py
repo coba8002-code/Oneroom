@@ -133,7 +133,7 @@ def suggest(session: Session, txn: Transaction, leases: list[LeaseInfo],
     return Suggestion(None, "unclassified", 0.0, f"일치하는 계약 없음. 입금자 {shown}")
 
 
-def _org_transactions(organization_id: uuid.UUID):
+def org_transactions(organization_id: uuid.UUID):
     return (
         select(Transaction)
         .join(BankAccount, Transaction.bank_account_id == BankAccount.id)
@@ -145,7 +145,7 @@ def run_matching(session: Session, organization_id: uuid.UUID) -> dict[str, int]
     """배분이 하나도 없는 입금 거래에 제안을 만든다. 확실한 것만 자동 확정."""
     has_alloc = select(TransactionAllocation.transaction_id)
     txns = session.scalars(
-        _org_transactions(organization_id)
+        org_transactions(organization_id)
         .where(Transaction.direction == "in", Transaction.id.not_in(has_alloc))
         .order_by(Transaction.occurred_at)
     ).all()
@@ -190,7 +190,7 @@ def _apply(session: Session, alloc: TransactionAllocation, txn: Transaction) -> 
 def decide(session: Session, organization_id: uuid.UUID, txn_id: uuid.UUID, *,
            lease_id: uuid.UUID | None, category: str, remember_alias: bool) -> TransactionAllocation:
     """관리자 확정. 제안과 같으면 그 제안을 승인하고, 다르면 제안은 rejected 로 남기고 새로 만든다."""
-    txn = session.scalar(_org_transactions(organization_id).where(Transaction.id == txn_id))
+    txn = session.scalar(org_transactions(organization_id).where(Transaction.id == txn_id))
     if txn is None:
         raise LookupError("거래를 찾을 수 없습니다")
     if category in ("rent", "deposit_in"):
@@ -257,6 +257,8 @@ def cancel(session: Session, organization_id: uuid.UUID, allocation_id: uuid.UUI
         raise LookupError("배분을 찾을 수 없습니다")
     if alloc.review_status != "approved":
         raise MatchError("확정된 배분만 취소할 수 있습니다")
+    if session.get(Transaction, alloc.transaction_id).direction != "in":
+        raise MatchError("출금 거래는 운영비 화면에서 취소하세요")
     ledger.unapply(session, alloc)
     if alloc.category == "deposit_in":
         dep = session.scalar(select(Deposit).where(

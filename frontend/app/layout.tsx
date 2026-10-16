@@ -17,7 +17,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a href="/" className="font-bold tracking-tight">ROOMAX</a>
             <nav className="text-sm text-slate-600">
               <a href="/onboarding" className="mr-4 hover:text-slate-900">초기 등록</a>
-              <a href="/payments" className="hover:text-slate-900">수납</a>
+              <a href="/payments" className="mr-4 hover:text-slate-900">수납</a>
+              <a href="/expenses" className="hover:text-slate-900">운영비</a>
             </nav>
           </div>
         </header>

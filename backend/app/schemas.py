@@ -195,3 +195,80 @@ class ReceivablesOut(BaseModel):
     pending_review: int
     items: list[ReceivableItem]
     credits: list[CreditItem]
+
+
+# ── 운영비 · 월 결산 ────────────────────────────────────────
+
+ExpenseCategory = Literal[
+    "common_electricity", "water", "cleaning", "repair", "other_operating", "owner_household", "personal",
+]
+OutCategory = Literal[
+    "common_electricity", "water", "cleaning", "repair", "other_operating", "owner_household", "personal",
+    "deposit_out",
+]
+
+
+class ClassifyOut(BaseModel):
+    auto_confirmed: int
+    pending: int
+
+
+class SplitIn(BaseModel):
+    category: OutCategory
+    amount: int = Field(gt=0)
+    unit_id: uuid.UUID | None = None  # 특정 호실 수리 등
+
+
+class ExpenseDecisionIn(BaseModel):
+    splits: list[SplitIn] = Field(min_length=1, max_length=10)
+    lease_id: uuid.UUID | None = None  # 보증금 반환일 때
+    remember: bool = False  # 이 거래처를 같은 비율로 기억 → 다음부터 자동 확정
+
+
+class ConfirmedOut(BaseModel):
+    transaction: TransactionOut
+    splits: list[dict]  # [{category, amount, unit_no}]
+    reason: str | None
+
+
+class ExpenseOut(BaseModel):
+    id: uuid.UUID
+    category: str
+    amount: int
+    spent_on: date
+    memo: str | None
+    unit_no: str | None
+    from_bank: bool
+
+
+class ManualExpenseIn(BaseModel):
+    category: ExpenseCategory
+    amount: int = Field(gt=0)
+    spent_on: date
+    memo: str | None = Field(default=None, max_length=200)
+    unit_id: uuid.UUID | None = None
+
+
+class ExpenseRuleOut(BaseModel):
+    id: uuid.UUID
+    label: str
+    splits: list[dict]
+
+
+class UnitOut(BaseModel):
+    unit_id: uuid.UUID
+    unit_no: str
+
+
+class MonthlyReportOut(BaseModel):
+    period: str
+    rent_charged: int
+    rent_received: int
+    operating: dict[str, int]
+    operating_total: int
+    noi: int
+    excluded: dict[str, int]
+    unconfirmed_in: int
+    unconfirmed_out: int
+    complete: bool
+    bank_data_as_of: datetime | None

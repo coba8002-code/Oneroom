@@ -108,7 +108,65 @@ export const CATEGORY_LABEL: Record<string, string> = {
   owner_household: "주인세대",
   other: "기타",
   unclassified: "미분류",
+  common_electricity: "공용전기",
+  water: "수도",
+  cleaning: "청소",
+  repair: "수리",
+  other_operating: "공용 기타",
+  deposit_out: "보증금 반환",
 };
+
+/** 운영비(임대 순운영수익에 반영) */
+export const OPERATING = ["common_electricity", "water", "cleaning", "repair", "other_operating"] as const;
+/** 운영비 아님 — NOI 에서 제외 */
+export const NON_OPERATING = ["owner_household", "personal"] as const;
+export type ExpenseCategory = (typeof OPERATING)[number] | (typeof NON_OPERATING)[number];
+export type OutCategory = ExpenseCategory | "deposit_out";
+
+export interface UnitOut {
+  unit_id: string;
+  unit_no: string;
+}
+
+export interface ConfirmedOut {
+  transaction: TransactionOut;
+  splits: { category: string; amount: number; unit_no: string | null }[];
+  reason: string | null;
+}
+
+export interface ExpenseOut {
+  id: string;
+  category: string;
+  amount: number;
+  spent_on: string;
+  memo: string | null;
+  unit_no: string | null;
+  from_bank: boolean;
+}
+
+export interface ExpenseRuleOut {
+  id: string;
+  label: string;
+  splits: { category: string; bp: number }[];
+}
+
+export interface MonthlyReport {
+  period: string;
+  rent_charged: number;
+  rent_received: number;
+  operating: Record<string, number>;
+  operating_total: number;
+  noi: number;
+  excluded: Record<string, number>;
+  unconfirmed_in: number;
+  unconfirmed_out: number;
+  complete: boolean;
+  bank_data_as_of: string | null;
+}
+
+export const thisMonthKst = () =>
+  new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }).slice(0, 7);
+export const todayKst = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
 
 export interface QueueItem {
   transaction: TransactionOut;

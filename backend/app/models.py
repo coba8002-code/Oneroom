@@ -175,7 +175,9 @@ class TransactionAllocation(Base):
     id: Mapped[uuid.UUID] = pk()
     transaction_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("transactions.id"), index=True)
     lease_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("leases.id"), index=True)
-    # rent | deposit_in | deposit_out | common_expense | owner_household | personal | other | unclassified
+    # 입금: rent | deposit_in | personal | owner_household | other
+    # 출금: common_electricity | water | cleaning | repair | other_operating | owner_household | personal | deposit_out
+    # 미정: unclassified
     category: Mapped[str] = mapped_column(String(30))
     amount: Mapped[int] = mapped_column(BigInteger)
     review_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | approved | rejected
@@ -212,18 +214,41 @@ class Payment(Base):
 # ── 운영비·보증금 ────────────────────────────────────────────
 
 class Expense(Base):
+    """지출 원장. 은행 출금 확정분(transaction_allocation_id)과 현금 수기 입력분(None)을 함께 담는다.
+
+    운영비(임대 순운영수익에 반영): common_electricity | water | cleaning | repair | other_operating
+    운영비 아님(별도 집계):        owner_household | personal
+    """
     __tablename__ = "expenses"
+    __table_args__ = (CheckConstraint("amount > 0", name="ck_expenses_amount"),)
     id: Mapped[uuid.UUID] = pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
     property_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("properties.id"), index=True)
     unit_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units.id"))
     transaction_allocation_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("transaction_allocations.id")
+        ForeignKey("transaction_allocations.id"), index=True
     )
-    # common_electricity | water | cleaning | repair | owner_household | personal | other
     category: Mapped[str] = mapped_column(String(30))
     amount: Mapped[int] = mapped_column(BigInteger)
-    spent_on: Mapped[date] = mapped_column("date", Date)
+    spent_on: Mapped[date] = mapped_column("date", Date, index=True)
+    memo: Mapped[str | None] = mapped_column(String(200))
     document_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = created_at()
+
+
+class ExpenseRule(Base):
+    """거래처 → 분류(비율). 관리자가 확정하며 '기억'을 고른 것만 저장 → 이후 자동 확정.
+
+    splits: [{"category": "personal", "bp": 7000}, {"category": "owner_household", "bp": 3000}]
+    bp = 만분율, 합계 10000.
+    """
+    __tablename__ = "expense_rules"
+    __table_args__ = (UniqueConstraint("organization_id", "key", name="uq_expense_rules_key"),)
+    id: Mapped[uuid.UUID] = pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    key: Mapped[str] = mapped_column(String(200))  # normalize_name(거래처 또는 적요)
+    label: Mapped[str] = mapped_column(String(200))  # 화면 표시용 원문
+    splits: Mapped[list] = mapped_column(JSON)
     created_at: Mapped[datetime] = created_at()
 
 
