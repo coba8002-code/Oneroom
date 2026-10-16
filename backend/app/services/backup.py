@@ -192,9 +192,17 @@ def export(session: Session, organization_id: uuid.UUID, passphrase: str) -> tup
     return blob, manifest
 
 
-def filename(manifest: dict, prefix: str = "roomax") -> str:
+def filename(manifest: dict, prefix: str = "roomax", full_id: bool = False) -> str:
+    """full_id=True 면 사업장 id 전체 (서버에 남기는 안전 백업 — 사업장 해지 때 정확히 찾아 지우기 위해)."""
     ts = datetime.fromisoformat(manifest["created_at"]).astimezone().strftime("%Y%m%d-%H%M%S")
-    return f"{prefix}-{manifest['organization']['id'][:8]}-{ts}.roomaxbak"
+    org = manifest["organization"]["id"]
+    return f"{prefix}-{org if full_id else org[:8]}-{ts}.roomaxbak"
+
+
+def safety_backups(organization_id: uuid.UUID) -> list[Path]:
+    """복구 직전에 서버에 만든 이 사업장의 안전 백업 파일들."""
+    d = Path(settings.backup_dir)
+    return sorted(d.glob(f"pre-restore-{organization_id}-*.roomaxbak")) if d.exists() else []
 
 
 def last_backup_at(session: Session, organization_id: uuid.UUID) -> datetime | None:
@@ -288,7 +296,7 @@ def restore(session: Session, blob: bytes, passphrase: str, target_org_id: uuid.
         safety_blob, safety_manifest = build(session, target_org_id, passphrase)
         backup_dir = Path(settings.backup_dir)
         backup_dir.mkdir(parents=True, exist_ok=True)
-        safety = filename(safety_manifest, "pre-restore")
+        safety = filename(safety_manifest, "pre-restore", full_id=True)
         (backup_dir / safety).write_bytes(safety_blob)
 
         old_files = {d["file_path"] for d in current["lease_documents"]}

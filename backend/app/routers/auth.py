@@ -12,8 +12,19 @@ from app import auth
 from app.auth import Member, current_member
 from app.config import settings
 from app.db import get_session
-from app.models import AuditLog, EmailToken, Organization, User
-from app.services import mailer
+from app.models import (
+    AuditLog,
+    BankAccount,
+    EmailToken,
+    Lease,
+    LeaseDocument,
+    Organization,
+    Property,
+    Transaction,
+    Unit,
+    User,
+)
+from app.services import account_deletion, mailer
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -55,6 +66,12 @@ class ResetRequestIn(BaseModel):
 class ResetConfirmIn(BaseModel):
     token: str = Field(max_length=200)
     new_password: str = Field(max_length=200)
+
+
+class DeleteAccountIn(BaseModel):
+    password: str = Field(max_length=200)
+    otp: str | None = Field(default=None, max_length=10)
+    confirm_name: str | None = Field(default=None, max_length=200)  # 대표 탈퇴(사업장 해지) 때 사업장 이름
 
 
 class MarketingIn(BaseModel):
@@ -317,3 +334,50 @@ def reset_confirm(body: ResetConfirmIn, session: Session = Depends(get_session))
     _log(session, user, "auth.password_reset", {"sessions_revoked": n})
     session.commit()
     return {"reset": True}
+
+
+# ── 탈퇴 · 사업장 해지 ──────────────────────────────────────
+
+@router.get("/account/deletion-preview")
+def deletion_preview(member: Member = Depends(current_member), session: Session = Depends(get_session)) -> dict:
+    """탈퇴하면 무엇이 지워지는지 미리 보여준다."""
+    user = session.get(User, member.user_id)
+    org = session.get(Organization, user.organization_id)
+    if user.role != "owner":
+        return {"scope": "member", "organization_name": org.name}
+    props = select(Property.id).where(Property.organization_id == org.id)
+    units = select(Unit.id).where(Unit.property_id.in_(props))
+    count = lambda q: session.scalar(select(func.count()).select_from(q.subquery()))  # noqa: E731
+    return {
+        "scope": "organization",
+        "organization_name": org.name,
+        "other_accounts": count(select(User.id).where(User.organization_id == org.id, User.id != user.id)),
+        "counts": {
+            "units": count(units),
+            "leases": count(select(Lease.id).where(Lease.unit_id.in_(units))),
+            "transactions": count(select(Transaction.id).join(BankAccount).where(BankAccount.organization_id == org.id)),
+            "documents": count(select(LeaseDocument.id).join(Lease).where(Lease.unit_id.in_(units))),
+        },
+    }
+
+
+@router.post("/account/delete")
+def delete_account(body: DeleteAccountIn, response: Response, member: Member = Depends(current_member),
+                   session: Session = Depends(get_session)) -> dict:
+    """영구 삭제. 비밀번호(+2단계 코드)를 다시 확인하고, 대표는 사업장 이름까지 입력해야 한다."""
+    user = session.get(User, member.user_id)
+    if not auth.verify_password(body.password, user.password_hash):
+        raise HTTPException(401, "비밀번호가 맞지 않습니다")
+    if user.mfa_enabled_at is not None and not auth.verify_totp(user.mfa_secret, body.otp or ""):
+        raise HTTPException(401, "2단계 인증 코드가 맞지 않습니다")
+    if user.role == "owner":
+        org = session.get(Organization, user.organization_id)
+        if (body.confirm_name or "").strip() != org.name:
+            raise HTTPException(422, f"사업장을 해지하려면 사업장 이름 '{org.name}' 을 그대로 입력하세요")
+        result = account_deletion.delete_organization(session, org.id)
+        scope = "organization"
+    else:
+        account_deletion.delete_member(session, user)
+        result, scope = {}, "member"
+    auth.clear_cookie(response)
+    return {"deleted": True, "scope": scope, **result}

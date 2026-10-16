@@ -13,6 +13,7 @@ import {
   Loader2,
   ScanText,
   ServerCog,
+  Trash2,
   TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -79,6 +80,7 @@ export default function SettingsPage() {
         <ServerBackupCard />
         <OcrCard configured={ocr} />
       </div>
+      <DeleteAccountCard />
     </div>
   );
 }
@@ -425,6 +427,107 @@ function SecurityCard() {
           onClick={() => run(async () => { const r = await post("/api/v1/auth/sessions/revoke-others") as { revoked: number };
             setMsg({ ok: true, text: `${r.revoked}개 기기에서 로그아웃했습니다.` }); }, "")}>로그아웃</button>
       </div>
+      <Msg m={msg} />
+    </section>
+  );
+}
+
+interface DeletionPreview {
+  scope: "organization" | "member";
+  organization_name: string;
+  other_accounts?: number;
+  counts?: { units: number; leases: number; transactions: number; documents: number };
+}
+
+/** 회원 탈퇴 · 사업장 해지. 되돌릴 수 없으므로 열어야 보이고, 비밀번호(+코드)·사업장 이름을 다시 받는다. */
+function DeleteAccountCard() {
+  const { me } = useMe();
+  const [open, setOpen] = useState(false);
+  const [preview, setPreview] = useState<DeletionPreview | null>(null);
+  const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  if (!me) return null;
+  const owner = me.user.role === "owner";
+
+  async function start() {
+    setMsg(null);
+    try {
+      setPreview(await api<DeletionPreview>("/api/v1/auth/account/deletion-preview"));
+      setOpen(true);
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    }
+  }
+  async function remove() {
+    setBusy(true); setMsg(null);
+    try {
+      await api("/api/v1/auth/account/delete", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password, otp: me!.user.mfa_enabled ? otp : null, confirm_name: owner ? name : null }) });
+      window.location.href = "/login?deleted=1";
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+      setBusy(false);
+    }
+  }
+  const ready = password && (!me.user.mfa_enabled || otp.length === 6) && (!owner || name === preview?.organization_name);
+
+  return (
+    <section className="card border-red-200 p-5">
+      <div className="mb-4 flex gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-red-50 text-red-600"><Trash2 className="h-5 w-5" /></span>
+        <div>
+          <h2 className="card-title">{owner ? "사업장 해지 · 회원 탈퇴" : "회원 탈퇴"}</h2>
+          <p className="mt-0.5 text-sm text-slate-500">
+            {owner ? "이 사업장의 모든 데이터와 계정을 영구 삭제합니다. 되돌릴 수 없습니다."
+              : "내 계정만 삭제합니다. 사업장 데이터는 대표에게 그대로 남습니다."}</p>
+        </div>
+      </div>
+      {!open ? (
+        <button type="button" className="btn-secondary border-red-200 text-red-700 hover:bg-red-50" onClick={start}>
+          {owner ? "사업장 해지 진행" : "탈퇴 진행"}</button>
+      ) : preview && (
+        <div className="space-y-3 text-sm">
+          {preview.scope === "organization" && preview.counts && (
+            <>
+              <div className="rounded-xl bg-red-50 p-3 text-red-900">
+                <p className="font-semibold">함께 지워지는 것 — {preview.organization_name}</p>
+                <p className="mt-1">호실 {preview.counts.units} · 계약 {preview.counts.leases} · 은행 거래 {preview.counts.transactions} ·
+                  계약서 파일 {preview.counts.documents} · 이 사업장의 다른 계정 {preview.other_accounts ?? 0}개 · 복구 직전 안전 백업</p>
+                <p className="mt-1 text-xs text-red-800">임차인 연락처·계약서 원본을 포함한 모든 업무 데이터가 즉시 삭제됩니다.
+                  남는 것은 개인정보 없는 파기 기록(일시·건수)뿐입니다.</p>
+              </div>
+              <p className="flex gap-2 rounded-xl bg-amber-50 p-3 text-amber-950">
+                <TriangleAlert className="h-5 w-5 shrink-0 text-amber-600" />
+                <span>지우기 전에 위 <b>백업 내려받기</b>로 백업 파일을 받아 두세요. 나중에 새로 가입해 그 파일로 복구할 수 있습니다.
+                  서버 정기 백업에 남은 사본은 보관 기간이 지나면 순환 삭제됩니다.</span>
+              </p>
+            </>
+          )}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input className="field w-full min-w-0" type="password" placeholder="비밀번호" autoComplete="current-password"
+              value={password} onChange={(e) => setPassword(e.target.value)} />
+            {me.user.mfa_enabled && (
+              <input className="field w-full min-w-0 text-center tracking-[0.3em]" inputMode="numeric" maxLength={6} placeholder="인증 앱 코드"
+                value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} />
+            )}
+          </div>
+          {owner && (
+            <label className="block">
+              <span className="mb-1 block text-slate-600">확인을 위해 사업장 이름 <b className="text-slate-900">{preview.organization_name}</b> 을 그대로 입력하세요</span>
+              <input className="field w-full" value={name} onChange={(e) => setName(e.target.value)} aria-label="사업장 이름 확인" />
+            </label>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-danger" disabled={!ready || busy} onClick={remove}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {owner ? "사업장과 모든 데이터 영구 삭제" : "내 계정 영구 삭제"}</button>
+            <button type="button" className="btn-secondary" onClick={() => { setOpen(false); setPassword(""); setOtp(""); setName(""); setMsg(null); }}>취소</button>
+          </div>
+        </div>
+      )}
       <Msg m={msg} />
     </section>
   );

@@ -63,6 +63,9 @@ function LoginForm() {
           <span className="mt-1 block text-xs text-slate-500">2단계 인증을 켠 계정입니다.</span>
         </label>
       )}
+      {params.get("deleted") && !error && (
+        <p className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700" role="status">계정이 삭제되었습니다. 그동안 이용해 주셔서 감사합니다.</p>
+      )}
       {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       <button type="submit" className="btn-primary w-full py-3" disabled={busy}>
         {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="h-5 w-5" />} {needOtp ? "확인" : "로그인"}
