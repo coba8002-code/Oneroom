@@ -1,10 +1,14 @@
 import os
+import tempfile
 from pathlib import Path
 
 from cryptography.fernet import Fernet
 
 os.environ["ROOMAX_DATABASE_URL"] = "sqlite://"
 os.environ["ROOMAX_FIELD_KEY"] = Fernet.generate_key().decode()
+os.environ["ROOMAX_UPLOAD_DIR"] = tempfile.mkdtemp(prefix="roomax-test-uploads-")
+os.environ.pop("ROOMAX_CLOVA_OCR_URL", None)  # 테스트는 실제 OCR 서버를 부르지 않는다
+os.environ.pop("ROOMAX_CLOVA_OCR_SECRET", None)
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import bank, charges, dashboard, expenses, onboarding, payments
+from app.routers import bank, charges, contracts, dashboard, expenses, onboarding, payments
 
 app = FastAPI(title="ROOMAX API", version="0.1.0")
 app.add_middleware(
@@ -17,6 +17,7 @@ app.include_router(bank.router)
 app.include_router(payments.router)
 app.include_router(expenses.router)
 app.include_router(dashboard.router)
+app.include_router(contracts.router)
 
 
 @app.get("/api/v1/health")

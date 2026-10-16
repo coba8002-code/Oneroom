@@ -354,3 +354,61 @@ class DashboardOut(BaseModel):
     lease_endings: list[LeaseEnding]
     tax_events: list[TaxEventOut]
     attention: list[AttentionItem]
+
+
+# ── 계약서 · OCR ────────────────────────────────────────────
+
+class DocumentSummary(BaseModel):
+    id: uuid.UUID
+    original_name: str | None
+    created_at: datetime
+    ocr_status: str
+    verified_at: datetime | None
+
+
+class ContractOut(BaseModel):
+    lease_id: uuid.UUID
+    unit_no: str
+    tenant_name: str
+    deposit: int
+    rent: int
+    due_day: int
+    start_date: date
+    end_date: date | None
+    documents: list[DocumentSummary]
+
+
+class ExtractedField(BaseModel):
+    value: int | str | None
+    evidence: str | None
+
+
+class DocumentOut(BaseModel):
+    id: uuid.UUID
+    lease_id: uuid.UUID
+    unit_no: str
+    original_name: str | None
+    content_type: str | None
+    created_at: datetime
+    ocr_status: str  # not_configured | done | failed
+    ocr_provider: str | None
+    ocr_error: str | None
+    ocr_text: str | None
+    fields: dict[str, ExtractedField] | None  # OCR 후보 (확정 아님)
+    current: dict  # 지금 원장 값
+    verified_at: datetime | None
+    verified_fields: dict | None
+
+
+class VerifyIn(BaseModel):
+    """관리자가 확정한 최종 값 (화면에서 OCR 후보로 미리 채움)."""
+    deposit: int = Field(ge=0)
+    rent: int = Field(ge=0)
+    due_day: int = Field(ge=1, le=31)
+    start_date: date
+    end_date: date | None = None
+
+
+class OcrSettingsOut(BaseModel):
+    configured: bool
+    provider: str | None

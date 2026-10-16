@@ -128,12 +128,22 @@ class PayerAlias(Base):
 
 
 class LeaseDocument(Base):
-    """계약서 이미지와 OCR 결과. verified_at 이 채워지기 전에는 원장에 반영하지 않는다."""
+    """계약서 이미지와 OCR 결과. verified_at 이 채워지기 전에는 원장에 반영하지 않는다.
+
+    파일은 암호화해 저장한다 (file_path = 저장소 안 상대 경로).
+    ocr_json = {"provider", "text", "fields": {이름: {"value", "evidence"}}, "error"}
+    """
     __tablename__ = "lease_documents"
     id: Mapped[uuid.UUID] = pk()
     lease_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("leases.id"), index=True)
     file_path: Mapped[str] = mapped_column(String(500))
+    original_name: Mapped[str | None] = mapped_column(String(255))
+    content_type: Mapped[str | None] = mapped_column(String(50))
+    sha256: Mapped[str | None] = mapped_column(String(64), index=True)  # 원본 기준, 같은 파일 중복 업로드 확인
+    # not_configured | done | failed
+    ocr_status: Mapped[str] = mapped_column(String(20), default="not_configured")
     ocr_json: Mapped[dict | None] = mapped_column(JSON)
+    verified_fields: Mapped[dict | None] = mapped_column(JSON)  # 관리자가 확정한 값
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     verified_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = created_at()
