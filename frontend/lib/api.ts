@@ -62,13 +62,27 @@ async function errorText(res: Response): Promise<string> {
   return `요청 실패 (${res.status})`;
 }
 
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+export const AUTH_PAGES = ["/login", "/signup", "/terms", "/privacy"];
+
+/** 로그인 쿠키를 함께 보내는 fetch. 401 이면 로그인 화면으로 보낸다 (가입·로그인 화면 제외). */
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, init);
+    res = await fetch(`${API_BASE}${path}`, { ...init, credentials: "include" });
   } catch {
     throw new Error(`서버(${API_BASE})에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인하세요.`);
   }
+  if (res.status === 401 && typeof window !== "undefined" && !AUTH_PAGES.includes(window.location.pathname)
+      && !path.startsWith("/api/v1/auth/")) {
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.href = `/login?next=${next}`;
+    throw new Error("로그인이 필요합니다");
+  }
+  return res;
+}
+
+export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await apiFetch(path, init);
   if (!res.ok) throw new Error(await errorText(res));
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -310,3 +324,11 @@ export interface DocumentDetail {
   verified_at: string | null;
   verified_fields: (Record<ContractField, number | string | null> & { changed: ContractField[] }) | null;
 }
+
+export interface Me {
+  user: { id: string; email: string; name: string | null; role: "owner" | "manager" | "viewer"; mfa_enabled: boolean;
+    marketing_agreed: boolean };
+  organization: { id: string; name: string };
+}
+
+export const ROLE_LABEL: Record<Me["user"]["role"], string> = { owner: "대표", manager: "관리자", viewer: "조회" };

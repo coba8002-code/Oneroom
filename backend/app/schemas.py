@@ -48,7 +48,6 @@ class UnitIn(BaseModel):
 
 
 class OnboardingIn(BaseModel):
-    organization_name: str = Field(default="내 임대사업", max_length=200)
     property: PropertyIn
     bank_account_alias: str = Field(default="주거래 통장", max_length=100)
     units: list[UnitIn] = Field(min_length=1)

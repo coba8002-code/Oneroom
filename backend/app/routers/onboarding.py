@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.auth import Member, org_guard
 from app.db import get_session
 from app.schemas import CsvPreviewOut, OnboardingIn, OnboardingOut
 from app.services.onboarding import onboard, parse_onboarding_csv
@@ -12,9 +13,10 @@ MAX_UPLOAD = 1_000_000
 
 
 @router.post("", response_model=OnboardingOut, status_code=201)
-def create(data: OnboardingIn, session: Session = Depends(get_session)) -> OnboardingOut:
+def create(data: OnboardingIn, member: Member = Depends(org_guard),
+           session: Session = Depends(get_session)) -> OnboardingOut:
     try:
-        return onboard(session, data)
+        return onboard(session, member.organization_id, data)
     except IntegrityError:
         session.rollback()
         raise HTTPException(409, "이미 있는 데이터와 충돌합니다")

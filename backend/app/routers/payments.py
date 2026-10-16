@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth import Member, org_guard
 from app.db import get_session
 from app.models import BankAccount, Organization, Transaction, TransactionAllocation
 from app.schemas import (
@@ -42,9 +43,10 @@ def _org_txns(organization_id: uuid.UUID):
 
 
 @router.get("/organizations", response_model=list[OrganizationOut])
-def organizations(session: Session = Depends(get_session)) -> list[OrganizationOut]:
-    return [OrganizationOut(id=o.id, name=o.name)
-            for o in session.scalars(select(Organization).order_by(Organization.created_at))]
+def organizations(member: Member = Depends(org_guard), session: Session = Depends(get_session)) -> list[OrganizationOut]:
+    """로그인한 사용자의 사업장 (지금은 계정당 하나)."""
+    o = session.get(Organization, member.organization_id)
+    return [OrganizationOut(id=o.id, name=o.name)]
 
 
 @router.get("/leases", response_model=list[LeaseOut])

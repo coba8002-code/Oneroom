@@ -37,15 +37,55 @@ def session(session_factory):
         yield s
 
 
+ORG_NAME = "테스트 임대"
+PASSWORD = "test-password-123"
+
+
+@pytest.fixture(autouse=True)
+def _reset_login_throttle():
+    from app import auth
+    auth._fails.clear()
+    yield
+    auth._fails.clear()
+
+
 @pytest.fixture
-def client(session_factory):
-    def _override():
+def _override(session_factory):
+    def _get():
         with session_factory() as s:
             yield s
 
-    app.dependency_overrides[get_session] = _override
-    yield TestClient(app)
+    app.dependency_overrides[get_session] = _get
+    yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def anon_client(_override):
+    """로그인하지 않은 클라이언트."""
+    return TestClient(app)
+
+
+@pytest.fixture
+def make_client(_override):
+    """가입(=사업장 생성)까지 마친 새 클라이언트를 만든다. 반환: (client, me)"""
+    n = iter(range(1, 1000))
+
+    def _make(org_name: str = ORG_NAME, email: str | None = None):
+        c = TestClient(app)
+        res = c.post("/api/v1/auth/signup", json={
+            "email": email or f"owner{next(n)}@example.com", "password": PASSWORD, "name": "대표",
+            "organization_name": org_name, "agree_terms": True, "agree_privacy": True})
+        assert res.status_code == 201, res.text
+        return c, res.json()
+    return _make
+
+
+@pytest.fixture
+def client(make_client):
+    """가입·로그인된 사업장 대표(owner)."""
+    c, _ = make_client(email="owner@example.com")
+    return c
 
 
 @pytest.fixture

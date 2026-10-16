@@ -16,7 +16,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { API_BASE, api, type Contract, type ContractField, type DocumentDetail, won } from "@/lib/api";
+import { api, apiFetch, type Contract, type ContractField, type DocumentDetail, won } from "@/lib/api";
 import { useOrg } from "@/lib/useOrg";
 
 const FIELD_META: { key: ContractField; label: string; kind: "money" | "day" | "date" }[] = [
@@ -254,7 +254,7 @@ function Preview({ orgId, doc }: { orgId: string; doc: DocumentDetail }) {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let revoke: string | null = null;
-    fetch(`${API_BASE}/api/v1/documents/${doc.id}/file?organization_id=${orgId}`)
+    apiFetch(`/api/v1/documents/${doc.id}/file?organization_id=${orgId}`)
       .then((r) => r.blob())
       .then((b) => { revoke = URL.createObjectURL(b); setUrl(revoke); })
       .catch(() => setUrl(null));

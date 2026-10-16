@@ -35,12 +35,12 @@ MAGIC = b"ROOMAXBK"
 FILE_VERSION = 1
 FORMAT = 1
 # 백업을 만든 DB 스키마. 마이그레이션을 추가하면 같이 올린다 (test_backup 이 alembic head 와 비교)
-SCHEMA_REVISION = "0004"
+SCHEMA_REVISION = "0005"
 MIN_PASSPHRASE = 8
 MAX_BACKUP_BYTES = 300_000_000
 
-# 조직 기준으로 테이블을 고르는 방법. 새 테이블을 만들면 반드시 여기에 추가 (test_backup 이 검사)
-ORG_COLUMN = ("users", "properties", "tenants", "bank_accounts", "assets", "tax_cases", "notifications",
+# 조직 기준으로 테이블을 고르는 방법. 새 테이블을 만들면 반드시 여기나 EXCLUDED 에 추가 (test_backup 이 검사)
+ORG_COLUMN = ("properties", "tenants", "bank_accounts", "assets", "tax_cases", "notifications",
               "payer_aliases", "expense_rules", "expenses")
 CHILDREN = (  # (테이블, 외래키 열, 부모 테이블)
     ("units", "property_id", "properties"),
@@ -54,6 +54,8 @@ CHILDREN = (  # (테이블, 외래키 열, 부모 테이블)
     ("payments", "charge_id", "charges"),
 )
 COVERED = {"organizations", "audit_logs", *ORG_COLUMN, *(c[0] for c in CHILDREN)}
+# 계정 정보(비밀번호 해시·세션·MFA 키)는 백업에 넣지 않는다 — 데이터가 아니라 로그인 수단
+EXCLUDED = {"users", "auth_sessions"}
 
 
 class BackupError(ValueError):
@@ -216,9 +218,13 @@ def open_backup(blob: bytes, passphrase: str) -> tuple[dict, zipfile.ZipFile]:
     return manifest, z
 
 
-def inspect(session: Session, blob: bytes, passphrase: str) -> dict:
+def _has_data(rows: dict[str, list[dict]]) -> bool:
+    return any(rs for name, rs in rows.items() if name not in ("organizations", "audit_logs"))
+
+
+def inspect(session: Session, blob: bytes, passphrase: str, target_org_id: uuid.UUID) -> dict:
     manifest, _ = open_backup(blob, passphrase)
-    existing = session.get(Organization, uuid.UUID(manifest["organization"]["id"]))
+    target = session.get(Organization, target_org_id)
     return {
         "organization": manifest["organization"],
         "created_at": manifest["created_at"],
@@ -226,53 +232,75 @@ def inspect(session: Session, blob: bytes, passphrase: str) -> dict:
         "compatible": manifest["schema_revision"] == SCHEMA_REVISION,
         "counts": manifest["counts"],
         "files": manifest["files"],
-        "exists": existing is not None,
-        "existing_name": existing.name if existing else None,
+        "same_organization": manifest["organization"]["id"] == str(target_org_id),
+        "exists": _has_data(collect(session, target_org_id)),  # 덮어쓰게 되는지
+        "existing_name": target.name,
     }
 
 
-def restore(session: Session, blob: bytes, passphrase: str, confirm_name: str | None = None) -> dict:
-    """백업을 되살린다. 같은 조직이 이미 있으면 confirm_name(현재 사업장=조직 이름)을 맞게 넣어야 덮어쓴다.
+def restore(session: Session, blob: bytes, passphrase: str, target_org_id: uuid.UUID,
+            confirm_name: str | None = None) -> dict:
+    """백업을 로그인한 사업장(target_org_id)으로 되살린다.
 
-    업무 데이터는 백업 시점으로 돌아가지만, 감사 기록(audit_logs)은 지우지 않는다 — 이력이므로.
-
-    덮어쓰기 전에 현재 상태를 같은 비밀번호로 ROOMAX_BACKUP_DIR 에 자동 백업한다.
-    DB 는 한 트랜잭션 — 중간에 실패하면 아무것도 바뀌지 않는다.
+    - 다른 사업장(다른 서버 포함)에서 만든 백업이면 사업장 id 를 이 사업장으로 바꿔 넣는다.
+    - 이 사업장에 이미 데이터가 있으면 confirm_name(사업장 이름)을 맞게 넣어야 덮어쓰고,
+      직전 상태를 같은 비밀번호로 ROOMAX_BACKUP_DIR 에 자동 백업한다.
+    - 업무 데이터는 백업 시점으로 돌아가지만 감사 기록은 지우지 않는다 — 이력이므로.
+    - 같은 데이터가 이 서버의 다른 사업장에 이미 있으면 (id 충돌) 아무것도 바꾸지 않고 실패한다.
+    - DB 는 한 트랜잭션 — 중간에 실패하면 아무것도 바뀌지 않는다.
     """
     manifest, z = open_backup(blob, passphrase)
     if manifest["schema_revision"] != SCHEMA_REVISION:
         raise BackupConflict(f"다른 버전에서 만든 백업입니다 (백업 {manifest['schema_revision']}, 이 서버 "
-                          f"{SCHEMA_REVISION}). 같은 버전 서버에서 복구하세요")
-    org_id = uuid.UUID(manifest["organization"]["id"])
+                             f"{SCHEMA_REVISION}). 같은 버전 서버에서 복구하세요")
+    source = manifest["organization"]["id"]
+    target = session.get(Organization, target_org_id)
     t = _tables()
-    data = {name: [_dec(t[name], r) for r in json.loads(z.read(f"data/{name}.json"))]
-            for name in manifest["counts"]}
+    data: dict[str, list[dict]] = {}
+    for name in manifest["counts"]:
+        if name == "organizations" or name in EXCLUDED:
+            continue  # 사업장 행은 가입 때 만들어진 것을 그대로 쓴다
+        rows = json.loads(z.read(f"data/{name}.json"))
+        for r in rows:
+            if r.get("organization_id") == source:
+                r["organization_id"] = str(target_org_id)
+            if name == "audit_logs" and r.get("entity_id") == source:
+                r["entity_id"] = str(target_org_id)
+        data[name] = [_dec(t[name], r) for r in rows]
 
-    existing = session.get(Organization, org_id)
+    # 사용자(계정)는 백업에 없다 → 이 사업장에 없는 사용자를 가리키면 연결만 끊는다
+    users = set(session.scalars(select(t["users"].c.id).where(t["users"].c.organization_id == target_org_id)))
+    for name, rows in data.items():
+        for col in t[name].c:
+            if any(fk.column.table.name == "users" for fk in col.foreign_keys):
+                for r in rows:
+                    if r.get(col.name) is not None and r[col.name] not in users:
+                        r[col.name] = None
+
+    current = collect(session, target_org_id)
+    replacing = _has_data(current)
     safety = None
     old_files: set[str] = set()
-    if existing is not None:
-        if confirm_name is None or confirm_name.strip() != existing.name:
-            raise BackupConflict(f"이 서버에 같은 사업장 데이터가 있습니다. 덮어쓰려면 사업장 이름 "
-                                 f"'{existing.name}' 을 그대로 입력하세요")
-        safety_blob, safety_manifest = build(session, org_id, passphrase)
+    if replacing:
+        if confirm_name is None or confirm_name.strip() != target.name:
+            raise BackupConflict(f"이 사업장에 이미 데이터가 있습니다. 덮어쓰려면 사업장 이름 "
+                                 f"'{target.name}' 을 그대로 입력하세요")
+        safety_blob, safety_manifest = build(session, target_org_id, passphrase)
         backup_dir = Path(settings.backup_dir)
         backup_dir.mkdir(parents=True, exist_ok=True)
         safety = filename(safety_manifest, "pre-restore")
         (backup_dir / safety).write_bytes(safety_blob)
 
-        current = collect(session, org_id)
         old_files = {d["file_path"] for d in current["lease_documents"]}
         for table in reversed(Base.metadata.sorted_tables):
-            if table.name == "audit_logs":
+            if table.name in ("organizations", "audit_logs") or table.name in EXCLUDED:
                 continue  # 감사 기록은 되감지 않는다 (아래에서 빠진 것만 보탬)
             ids = [r["id"] for r in current.get(table.name, [])]
             if ids:
                 session.execute(delete(table).where(table.c.id.in_(ids)))
-        # 백업 뒤에 생긴 기록(백업 내보내기·덮어쓰기 전 변경 등)도 이력이므로 그대로 두고,
-        # 백업에만 있는 기록만 더한다. (로그인 사용자가 생기면 user_id 외래키도 함께 검토할 것)
-        kept = {r["id"] for r in current["audit_logs"]}
-        data["audit_logs"] = [r for r in data.get("audit_logs", []) if r["id"] not in kept]
+    # 백업 뒤에 생긴 기록도 이력이므로 그대로 두고, 백업에만 있는 기록만 더한다
+    kept = {r["id"] for r in current["audit_logs"]}
+    data["audit_logs"] = [r for r in data.get("audit_logs", []) if r["id"] not in kept]
 
     staged: list[str] = []
     try:
@@ -283,9 +311,10 @@ def restore(session: Session, blob: bytes, passphrase: str, confirm_name: str | 
             rows = data.get(table.name)
             if rows:
                 session.execute(insert(table), rows)
-        session.add(AuditLog(action="backup.restore", entity_type="organization", entity_id=str(org_id),
+        session.add(AuditLog(action="backup.restore", entity_type="organization", entity_id=str(target_org_id),
                              detail={"counts": manifest["counts"], "backup_created_at": manifest["created_at"],
-                                     "replaced": existing is not None, "safety_backup": safety}))
+                                     "replaced": replacing, "from_other_organization": source != str(target_org_id),
+                                     "safety_backup": safety}))
         session.commit()
     except Exception:
         session.rollback()
@@ -297,5 +326,5 @@ def restore(session: Session, blob: bytes, passphrase: str, confirm_name: str | 
         storage.promote(name)
     for name in old_files - set(staged):
         storage.delete(name)
-    return {"organization": manifest["organization"], "counts": manifest["counts"],
-            "replaced": existing is not None, "safety_backup": safety}
+    return {"organization": {"id": str(target.id), "name": target.name}, "counts": manifest["counts"],
+            "replaced": replacing, "safety_backup": safety}

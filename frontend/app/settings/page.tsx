@@ -2,6 +2,9 @@
 
 import {
   ArchiveRestore,
+  LockKeyhole,
+  Smartphone,
+  UserRound,
   CheckCircle2,
   DatabaseBackup,
   Download,
@@ -13,7 +16,8 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { API_BASE, api, kst } from "@/lib/api";
+import { api, apiFetch, kst } from "@/lib/api";
+import { useMe } from "@/lib/me";
 import { useOrg } from "@/lib/useOrg";
 
 const MIN = 8;
@@ -44,6 +48,8 @@ async function errorOf(res: Response) {
 
 export default function SettingsPage() {
   const { orgs, orgId, error: orgError } = useOrg();
+  const { me } = useMe();
+  const isOwner = me?.user.role === "owner";  // 백업·복구는 대표만 (서버도 같은 규칙)
   const [lastBackup, setLastBackup] = useState<string | null | undefined>(undefined);
   const [ocr, setOcr] = useState<boolean | null>(null);
 
@@ -61,13 +67,15 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <header>
         <h1 className="page-title">설정</h1>
-        <p className="page-sub">백업·복구와 연동 상태를 관리합니다.</p>
+        <p className="page-sub">계정 보안, 백업·복구, 연동 상태를 관리합니다.</p>
       </header>
       {orgError && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{orgError}</p>}
 
       <div className="grid gap-4 xl:grid-cols-2 [&>*]:min-w-0">
-        {orgs && orgs.length > 0 && <ExportCard orgId={orgId} lastBackup={lastBackup} onDone={reload} />}
-        <RestoreCard onDone={reload} />
+        <AccountCard />
+        <SecurityCard />
+        {isOwner && orgs && orgs.length > 0 && <ExportCard orgId={orgId} lastBackup={lastBackup} onDone={reload} />}
+        {isOwner && <RestoreCard onDone={reload} />}
         <ServerBackupCard />
         <OcrCard configured={ocr} />
       </div>
@@ -97,7 +105,7 @@ function ExportCard({ orgId, lastBackup, onDone }: { orgId: string; lastBackup: 
   async function download() {
     setBusy(true); setMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/api/v1/backups/export?organization_id=${orgId}`, {
+      const res = await apiFetch(`/api/v1/backups/export?organization_id=${orgId}`, {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ passphrase: pw }) });
       if (!res.ok) throw new Error(await errorOf(res));
       const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "roomax.roomaxbak";
@@ -168,7 +176,7 @@ function RestoreCard({ onDone }: { onDone: () => void }) {
   async function inspect() {
     setBusy(true); setError(null); setInfo(null); setDone(null);
     try {
-      const res = await fetch(`${API_BASE}/api/v1/backups/inspect`, { method: "POST", body: form() });
+      const res = await apiFetch("/api/v1/backups/inspect", { method: "POST", body: form() });
       if (!res.ok) throw new Error(await errorOf(res));
       setInfo(await res.json());
     } catch (e) {
@@ -182,7 +190,7 @@ function RestoreCard({ onDone }: { onDone: () => void }) {
     if (!info) return;
     setBusy(true); setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/v1/backups/restore`, {
+      const res = await apiFetch("/api/v1/backups/restore", {
         method: "POST", body: form(info.exists ? { confirm_name: confirm } : undefined) });
       if (!res.ok) throw new Error(await errorOf(res));
       const r = await res.json();
@@ -300,6 +308,121 @@ function OcrCard({ configured }: { configured: boolean | null }) {
           <code className="rounded bg-slate-100 px-1">ROOMAX_CLOVA_OCR_SECRET</code> 를 채우고 재시작하세요.
         </p>
       )}
+    </section>
+  );
+}
+
+function Msg({ m }: { m: { ok: boolean; text: string } | null }) {
+  if (!m) return null;
+  return <p className={`mt-3 rounded-xl p-3 text-sm ${m.ok ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-800"}`}>{m.text}</p>;
+}
+
+function AccountCard() {
+  const { me, reload } = useMe();
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  if (!me) return null;
+  async function toggleMarketing(agree: boolean) {
+    try {
+      await api("/api/v1/auth/marketing", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ agree }) });
+      await reload();
+      setMsg({ ok: true, text: agree ? "광고성 정보 수신에 동의했습니다." : "광고성 정보 수신 동의를 철회했습니다." });
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    }
+  }
+  return (
+    <section className="card p-5">
+      <CardHead icon={UserRound} title="내 계정" sub="로그인 정보와 수신 동의" />
+      <dl className="grid grid-cols-[6rem_1fr] gap-y-2 text-sm">
+        <dt className="text-slate-500">이름</dt><dd>{me.user.name}</dd>
+        <dt className="text-slate-500">이메일</dt><dd>{me.user.email}</dd>
+        <dt className="text-slate-500">사업장</dt><dd>{me.organization.name}</dd>
+        <dt className="text-slate-500">권한</dt><dd>{ {owner: "대표 (전체)", manager: "관리자 (입력·수정)", viewer: "조회만"}[me.user.role] }</dd>
+      </dl>
+      <label className="mt-4 flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-sm">
+        <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-blue-600" checked={me.user.marketing_agreed}
+          onChange={(e) => toggleMarketing(e.target.checked)} />
+        광고성 정보(새 기능·할인 안내) 이메일 수신 <span className="text-xs text-slate-400">(선택)</span>
+      </label>
+      <Msg m={msg} />
+    </section>
+  );
+}
+
+function SecurityCard() {
+  const { me, reload } = useMe();
+  const [cur, setCur] = useState("");
+  const [next, setNext] = useState("");
+  const [setup, setSetup] = useState<{ secret: string; otpauth_uri: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [disablePw, setDisablePw] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const post = (path: string, body?: unknown) => api(path, { method: "POST",
+    ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}) });
+  const run = async (fn: () => Promise<unknown>, ok: string) => {
+    setMsg(null);
+    try { await fn(); if (ok) setMsg({ ok: true, text: ok }); } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+  };
+  if (!me) return null;
+  return (
+    <section className="card p-5">
+      <CardHead icon={LockKeyhole} title="보안" sub="비밀번호, 2단계 인증, 다른 기기 로그아웃" />
+      <div className="space-y-2">
+        <div className="text-sm font-semibold text-slate-700">비밀번호 변경</div>
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <input className="field w-full min-w-0" type="password" placeholder="현재 비밀번호" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} />
+          <input className="field w-full min-w-0" type="password" placeholder="새 비밀번호 (10자 이상, 문자+숫자)" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+          <button type="button" className="btn-secondary whitespace-nowrap" disabled={!cur || next.length < 10}
+            onClick={() => run(async () => { await post("/api/v1/auth/password", { current_password: cur, new_password: next }); setCur(""); setNext(""); },
+              "비밀번호를 바꿨습니다. 다른 기기는 로그아웃되었습니다.")}>변경</button>
+        </div>
+      </div>
+
+      <div className="mt-5 space-y-2 border-t border-slate-100 pt-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <Smartphone className="h-4 w-4" /> 2단계 인증 (인증 앱)
+          <span className={`chip ${me.user.mfa_enabled ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+            {me.user.mfa_enabled ? "사용 중" : "꺼짐"}</span>
+        </div>
+        {!me.user.mfa_enabled && !setup && (
+          <button type="button" className="btn-secondary btn-sm"
+            onClick={() => run(async () => setSetup(await post("/api/v1/auth/mfa/setup") as { secret: string; otpauth_uri: string }),
+              "인증 앱에 아래 키를 등록하고 6자리 코드를 넣으세요.")}>켜기</button>
+        )}
+        {setup && !me.user.mfa_enabled && (
+          <div className="space-y-2 rounded-xl bg-slate-50 p-3 text-sm">
+            <p>Google Authenticator 등 인증 앱에서 &lsquo;설정 키 입력&rsquo;으로 아래 키를 넣으세요. 휴대폰에서 보고 있다면
+              <a href={setup.otpauth_uri} className="font-semibold text-blue-600 underline"> 앱으로 열기</a>.</p>
+            <code className="block break-all rounded-lg bg-white p-2 text-center font-mono text-base tracking-wider">{setup.secret.replace(/(.{4})/g, "$1 ").trim()}</code>
+            <div className="flex gap-2">
+              <input className="field min-w-0 flex-1 text-center tracking-[0.3em]" inputMode="numeric" maxLength={6} placeholder="6자리 코드"
+                value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+              <button type="button" className="btn-primary" disabled={code.length !== 6}
+                onClick={() => run(async () => { await post("/api/v1/auth/mfa/enable", { code }); setSetup(null); setCode(""); await reload(); },
+                  "2단계 인증을 켰습니다. 다음 로그인부터 코드를 묻습니다.")}>확인</button>
+            </div>
+          </div>
+        )}
+        {me.user.mfa_enabled && (
+          <div className="flex flex-wrap gap-2">
+            <input className="field min-w-0 flex-1" type="password" placeholder="비밀번호" value={disablePw} onChange={(e) => setDisablePw(e.target.value)} />
+            <input className="field w-28 text-center" inputMode="numeric" maxLength={6} placeholder="코드" value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+            <button type="button" className="btn-secondary whitespace-nowrap" disabled={!disablePw || code.length !== 6}
+              onClick={() => run(async () => { await post("/api/v1/auth/mfa/disable", { password: disablePw, code }); setDisablePw(""); setCode(""); await reload(); },
+                "2단계 인증을 껐습니다.")}>끄기</button>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-5 flex items-center justify-between gap-2 border-t border-slate-100 pt-4 text-sm">
+        <span className="text-slate-600">이 기기를 뺀 모든 기기에서 로그아웃</span>
+        <button type="button" className="btn-secondary btn-sm"
+          onClick={() => run(async () => { const r = await post("/api/v1/auth/sessions/revoke-others") as { revoked: number };
+            setMsg({ ok: true, text: `${r.revoked}개 기기에서 로그아웃했습니다.` }); }, "")}>로그아웃</button>
+      </div>
+      <Msg m={msg} />
     </section>
   );
 }

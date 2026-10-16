@@ -2,6 +2,7 @@
 
 import {
   Bell,
+  LogOut,
   Building2,
   Calculator,
   FileBarChart,
@@ -18,7 +19,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { API_BASE, AUTH_PAGES, type Me, ROLE_LABEL } from "@/lib/api";
+import { MeContext } from "@/lib/me";
 
 type NavItem = { href: string | null; label: string; icon: LucideIcon };
 
@@ -88,6 +91,30 @@ function NavList({ pathname, onNavigate }: { pathname: string; onNavigate?: () =
   );
 }
 
+function UserBox({ me, dark = true }: { me: Me; dark?: boolean }) {
+  async function logout() {
+    await fetch(`${API_BASE}/api/v1/auth/logout`, { method: "POST", credentials: "include" }).catch(() => {});
+    window.location.href = "/login";
+  }
+  return (
+    <div className={`flex items-center gap-3 rounded-2xl p-3 ${dark ? "bg-white/5" : "bg-slate-50"}`}>
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-blue-500 text-sm font-bold text-white">
+        {(me.user.name ?? me.user.email).slice(0, 1)}
+      </span>
+      <div className="min-w-0 flex-1 leading-tight">
+        <div className="truncate text-sm font-semibold">{me.user.name ?? me.user.email}</div>
+        <div className={`truncate text-xs ${dark ? "text-slate-300" : "text-slate-500"}`}>
+          {me.organization.name} · {ROLE_LABEL[me.user.role]}
+        </div>
+      </div>
+      <button type="button" onClick={logout} title="로그아웃" aria-label="로그아웃"
+        className={`rounded-lg p-1.5 ${dark ? "text-slate-300 hover:bg-white/10" : "text-slate-500 hover:bg-white"}`}>
+        <LogOut className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 function SidebarCard() {
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-100 via-blue-50 to-indigo-100 p-4 text-navy-900">
@@ -100,15 +127,33 @@ function SidebarCard() {
 export default function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [drawer, setDrawer] = useState(false);
+  const [me, setMe] = useState<Me | null>(null);
   useEffect(() => setDrawer(false), [pathname]);
+  const authPage = AUTH_PAGES.includes(pathname);
+
+  const reload = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/api/v1/auth/me`, { credentials: "include" }).catch(() => null);
+    if (res?.ok) {
+      setMe(await res.json());
+    } else if (res?.status === 401 && !AUTH_PAGES.includes(window.location.pathname)) {
+      window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+    }
+  }, []);
+  useEffect(() => { reload(); }, [reload, pathname]);
+
+  // 가입·로그인·약관 화면은 메뉴 없이
+  if (authPage) return <MeContext.Provider value={{ me, reload }}>{children}</MeContext.Provider>;
+  // 로그인 확인 전에는 업무 화면을 그리지 않는다 (남의 화면이 잠깐 보이는 일 방지)
+  if (!me) return <div className="grid min-h-screen place-items-center text-sm text-slate-400">불러오는 중…</div>;
 
   return (
+    <MeContext.Provider value={{ me, reload }}>
     <div className="min-h-screen lg:flex">
       {/* 데스크톱 사이드바 */}
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col gap-6 bg-gradient-to-b from-navy-800 to-navy-950 px-4 py-6 text-white lg:flex">
         <div className="px-2"><Logo /></div>
         <NavList pathname={pathname} />
-        <div className="mt-auto"><SidebarCard /></div>
+        <div className="mt-auto space-y-3"><SidebarCard /><UserBox me={me} /></div>
       </aside>
 
       {/* 모바일 상단 바 */}
@@ -134,6 +179,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
             <NavList pathname={pathname} onNavigate={() => setDrawer(false)} />
+            <div className="mt-auto"><UserBox me={me} /></div>
           </div>
         </div>
       )}
@@ -161,5 +207,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </button>
       </nav>
     </div>
+    </MeContext.Provider>
   );
 }

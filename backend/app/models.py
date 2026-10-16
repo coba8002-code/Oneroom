@@ -54,11 +54,35 @@ class Organization(Base):
 
 
 class User(Base):
+    """로그인 계정. 한 사업장(organization)에 속한다. 비밀번호는 해시만, MFA 비밀키는 암호화 저장."""
     __tablename__ = "users"
     id: Mapped[uuid.UUID] = pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
-    email: Mapped[str | None] = mapped_column(String(320), unique=True)
+    email: Mapped[str | None] = mapped_column(String(320), unique=True)  # 소문자로 저장
+    name: Mapped[str | None] = mapped_column(String(100))
     role: Mapped[str] = mapped_column(String(20), default="owner")  # owner | manager | viewer
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(default=True)
+    mfa_secret: Mapped[str | None] = mapped_column(EncryptedString())
+    mfa_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # 동의 기록 (개인정보보호법 · 정보통신망법). 마케팅은 선택이라 null 가능
+    terms_agreed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    privacy_agreed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    marketing_agreed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at()
+
+
+class AuthSession(Base):
+    """로그인 세션. 쿠키에는 무작위 토큰, DB 에는 그 해시만 둔다."""
+    __tablename__ = "auth_sessions"
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    user_agent: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = created_at()
 
 

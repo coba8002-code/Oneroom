@@ -2,12 +2,13 @@
 import dataclasses
 import json
 import re
+import uuid
 from datetime import date
 from pathlib import Path
 
 import pytest
 from cryptography.fernet import Fernet
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -15,9 +16,9 @@ import app.crypto
 import app.services.storage
 from app import backup_cli
 from app.config import settings
-from app.models import AuditLog, Base, Expense, Tenant
+from app.models import AuditLog, Base, Expense, Organization, Tenant
 from app.services import backup, dashboard, storage
-from tests.conftest import SAMPLES
+from tests.conftest import ORG_NAME, SAMPLES
 
 PASS = "correct horse battery"
 PNG = b"\x89PNG\r\n\x1a\n" + b"contract-image" * 20
@@ -55,10 +56,13 @@ def rich(client, onboarded):
 
 
 def _snapshot(session, org_id):
+    """사업장 데이터 비교용. 사업장 행 자체와 사업장 id 는 빼고 비교 (다른 사업장으로 복구해도 같아야 함)."""
     rows = backup.collect(session, org_id)
+    rows.pop("organizations")
     rows["audit_logs"] = [r for r in rows["audit_logs"] if not r["action"].startswith("backup.")]
-    return json.loads(json.dumps({k: sorted(([{c: backup._enc(v) for c, v in r.items()} for r in rs]),
-                                            key=lambda r: r["id"]) for k, rs in rows.items()}, default=str))
+    text = json.dumps({k: sorted(([{c: backup._enc(v) for c, v in r.items()} for r in rs]), key=lambda r: r["id"])
+                       for k, rs in rows.items()}, default=str)
+    return json.loads(text.replace(str(org_id), "ORG"))
 
 
 def _dash(session, org_id):
@@ -70,8 +74,9 @@ def _dash(session, org_id):
 # ── 구조 ──
 
 def test_every_table_is_covered():
-    """새 테이블을 만들고 backup.ORG_COLUMN / CHILDREN 에 안 넣으면 여기서 실패한다."""
-    assert set(Base.metadata.tables) == backup.COVERED
+    """새 테이블을 만들고 backup.ORG_COLUMN / CHILDREN / EXCLUDED 에 안 넣으면 여기서 실패한다."""
+    assert set(Base.metadata.tables) == backup.COVERED | backup.EXCLUDED
+    assert not backup.COVERED & backup.EXCLUDED
 
 
 def test_schema_revision_matches_alembic_head():
@@ -98,7 +103,6 @@ def test_encryption():
 # ── 왕복 ──
 
 def test_round_trip_to_new_server_with_different_key(rich, session, monkeypatch, tmp_path):
-    import uuid
     org_id = uuid.UUID(rich["organization_id"])
     before = _snapshot(session, org_id)
     dash_before = _dash(session, org_id)
@@ -115,16 +119,21 @@ def test_round_trip_to_new_server_with_different_key(rich, session, monkeypatch,
         engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         Base.metadata.create_all(engine)
         with sessionmaker(bind=engine, expire_on_commit=False)() as s2:
-            info = backup.inspect(s2, blob, PASS)
+            new_org = Organization(name="새 서버 가입")  # 새 서버에서 회원가입 → 다른 사업장 id
+            s2.add(new_org)
+            s2.commit()
+            info = backup.inspect(s2, blob, PASS, new_org.id)
             assert info["exists"] is False and info["compatible"] and info["counts"] == manifest["counts"]
-            res = backup.restore(s2, blob, PASS)
+            assert info["same_organization"] is False
+            res = backup.restore(s2, blob, PASS, new_org.id)
             assert res["replaced"] is False and res["safety_backup"] is None
 
-            assert _snapshot(s2, org_id) == before
-            assert _dash(s2, org_id) == dash_before
+            assert _snapshot(s2, new_org.id) == before
+            assert _dash(s2, new_org.id) == dash_before
+            assert s2.scalar(select(func.count()).select_from(Organization)) == 1  # 사업장이 새로 생기지 않음
             phone = s2.scalar(select(Tenant.phone).limit(1))
             assert phone.startswith("010-")  # 새 키로 다시 암호화돼 읽힘
-            doc = backup.collect(s2, org_id)["lease_documents"][0]
+            doc = backup.collect(s2, new_org.id)["lease_documents"][0]
             assert storage.load(doc["file_path"]) == PNG
             assert not list(Path(new.upload_dir).glob(".*.restore"))
             assert s2.scalar(select(AuditLog).where(AuditLog.action == "backup.restore")) is not None
@@ -133,7 +142,6 @@ def test_round_trip_to_new_server_with_different_key(rich, session, monkeypatch,
 
 
 def test_replace_needs_name_and_keeps_safety_backup(rich, session, monkeypatch, tmp_path):
-    import uuid
     monkeypatch.setattr(backup, "settings", dataclasses.replace(settings, backup_dir=str(tmp_path / "bk")))
     org_id = uuid.UUID(rich["organization_id"])
     blob, _ = backup.export(session, org_id, PASS)
@@ -144,12 +152,12 @@ def test_replace_needs_name_and_keeps_safety_backup(rich, session, monkeypatch, 
     session.commit()
 
     with pytest.raises(backup.BackupConflict, match="사업장 이름"):
-        backup.restore(session, blob, PASS)
+        backup.restore(session, blob, PASS, org_id)
     with pytest.raises(backup.BackupConflict):
-        backup.restore(session, blob, PASS, confirm_name="다른 이름")
+        backup.restore(session, blob, PASS, org_id, confirm_name="다른 이름")
     session.add(AuditLog(action="note.after_backup", entity_type="organization", entity_id=str(org_id)))
     session.commit()
-    res = backup.restore(session, blob, PASS, confirm_name="내 임대사업")
+    res = backup.restore(session, blob, PASS, org_id, confirm_name=ORG_NAME)
     assert res["replaced"] is True
 
     session.expire_all()
@@ -169,7 +177,6 @@ def test_replace_needs_name_and_keeps_safety_backup(rich, session, monkeypatch, 
 
 
 def test_failed_restore_changes_nothing(rich, session, monkeypatch, tmp_path):
-    import uuid
     monkeypatch.setattr(backup, "settings", dataclasses.replace(settings, backup_dir=str(tmp_path / "bk")))
     org_id = uuid.UUID(rich["organization_id"])
     blob, _ = backup.export(session, org_id, PASS)
@@ -181,7 +188,7 @@ def test_failed_restore_changes_nothing(rich, session, monkeypatch, tmp_path):
         raise OSError("디스크 가득 참")
     monkeypatch.setattr(storage, "stage", boom)
     with pytest.raises(OSError):
-        backup.restore(session, blob, PASS, confirm_name="내 임대사업")
+        backup.restore(session, blob, PASS, org_id, confirm_name=ORG_NAME)
     session.expire_all()
     assert _snapshot(session, org_id) == before  # 지운 것도 되돌아옴
     doc = backup.collect(session, org_id)["lease_documents"][0]
@@ -189,12 +196,12 @@ def test_failed_restore_changes_nothing(rich, session, monkeypatch, tmp_path):
 
 
 def test_different_schema_revision_refused(rich, session, monkeypatch):
-    import uuid
-    blob, _ = backup.export(session, uuid.UUID(rich["organization_id"]), PASS)
+    org_id = uuid.UUID(rich["organization_id"])
+    blob, _ = backup.export(session, org_id, PASS)
     monkeypatch.setattr(backup, "SCHEMA_REVISION", "9999")
-    assert backup.inspect(session, blob, PASS)["compatible"] is False
+    assert backup.inspect(session, blob, PASS, org_id)["compatible"] is False
     with pytest.raises(backup.BackupConflict, match="다른 버전"):
-        backup.restore(session, blob, PASS, confirm_name="내 임대사업")
+        backup.restore(session, blob, PASS, org_id, confirm_name=ORG_NAME)
 
 
 # ── API · CLI · 대시보드 ──
@@ -215,9 +222,9 @@ def test_api_export_inspect_restore(client, rich, monkeypatch, tmp_path):
     bad = client.post("/api/v1/backups/inspect", files=files, data={"passphrase": "wrong passphrase"})
     assert bad.status_code == 422 and "비밀번호" in bad.json()["detail"]
     info = client.post("/api/v1/backups/inspect", files=files, data={"passphrase": PASS}).json()
-    assert info["exists"] is True and info["existing_name"] == "내 임대사업"
+    assert info["exists"] is True and info["existing_name"] == ORG_NAME
     assert client.post("/api/v1/backups/restore", files=files, data={"passphrase": PASS}).status_code == 409
-    ok = client.post("/api/v1/backups/restore", files=files, data={"passphrase": PASS, "confirm_name": "내 임대사업"})
+    ok = client.post("/api/v1/backups/restore", files=files, data={"passphrase": PASS, "confirm_name": ORG_NAME})
     assert ok.status_code == 200 and ok.json()["replaced"] is True
 
 

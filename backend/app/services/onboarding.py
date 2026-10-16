@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import io
+import uuid
 from datetime import date
 
 from pydantic import ValidationError
@@ -29,10 +30,9 @@ CSV_COLUMNS = {
 USE_TYPE_LABELS = {"임대": "rental", "주인": "owner", "주인세대": "owner", "rental": "rental", "owner": "owner"}
 
 
-def onboard(session: Session, data: OnboardingIn) -> OnboardingOut:
-    org = Organization(name=data.organization_name)
-    session.add(org)
-    session.flush()
+def onboard(session: Session, organization_id: uuid.UUID, data: OnboardingIn) -> OnboardingOut:
+    """로그인한 사업장에 건물·호실·계약을 등록한다 (사업장은 회원가입 때 만들어짐)."""
+    org = session.get(Organization, organization_id)
     prop = Property(organization_id=org.id, **data.property.model_dump())
     account = BankAccount(organization_id=org.id, alias=data.bank_account_alias)
     session.add_all([prop, account])

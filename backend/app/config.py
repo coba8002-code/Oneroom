@@ -16,6 +16,9 @@ class Settings:
     # NAVER CLOVA OCR (General). 둘 다 있어야 OCR 사용, 없으면 이미지만 저장하고 직접 입력
     clova_ocr_url: str = os.getenv("ROOMAX_CLOVA_OCR_URL", "")
     clova_ocr_secret: str = os.getenv("ROOMAX_CLOVA_OCR_SECRET", "")
+    # 운영(HTTPS)에서는 반드시 true — 세션 쿠키를 HTTPS 로만 보냄
+    cookie_secure: bool = os.getenv("ROOMAX_COOKIE_SECURE", "false").lower() == "true"
+    session_days: int = int(os.getenv("ROOMAX_SESSION_DAYS", "14"))
     cors_origins: tuple[str, ...] = tuple(
         o for o in os.getenv("ROOMAX_CORS_ORIGINS", "http://localhost:3000").split(",") if o
     )
