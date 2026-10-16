@@ -216,3 +216,44 @@ export const kst = (iso: string | null) =>
         timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
         hour: "2-digit", minute: "2-digit", hour12: false,
       });
+
+export interface BankAccount {
+  id: string;
+  alias: string;
+}
+
+export interface Dashboard {
+  as_of: string;
+  period: string;
+  bank_data_as_of: string | null;
+  counts: { total: number; rental: number; occupied: number; vacant: number; owner: number };
+  units: {
+    unit_no: string;
+    floor: number | null;
+    use_type: "rental" | "owner";
+    status: "occupied" | "vacant" | "owner";
+    tenant_name: string | null;
+    rent: number | null;
+    due_day: number | null;
+    charge_status: "paid" | "partial" | "open" | "waived" | "none" | null;
+    outstanding: number | null;
+    lease_end: string | null;
+  }[];
+  money: {
+    rent_charged: number;
+    rent_received: number;
+    overdue_total: number;
+    overdue_count: number;
+    operating_total: number;
+    noi: number;
+    complete: boolean;
+  };
+  due_soon: { unit_no: string; due_date: string; outstanding: number }[];
+  lease_endings: {
+    unit_no: string; tenant_name: string; end_date: string; days_left: number; deposit_to_return: number | null;
+  }[];
+  tax_events: {
+    name: string; start: string; end: string; note: string; url: string; in_progress: boolean; days_until_end: number;
+  }[];
+  attention: { level: "warn" | "info"; kind: string; message: string; href: string }[];
+}

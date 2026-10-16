@@ -272,3 +272,85 @@ class MonthlyReportOut(BaseModel):
     unconfirmed_out: int
     complete: bool
     bank_data_as_of: datetime | None
+
+
+# ── 대시보드 ────────────────────────────────────────────────
+
+class BankAccountOut(BaseModel):
+    id: uuid.UUID
+    alias: str
+
+
+class DashUnit(BaseModel):
+    unit_no: str
+    floor: int | None
+    use_type: str
+    status: str
+    tenant_name: str | None
+    rent: int | None
+    due_day: int | None
+    charge_status: str | None  # paid | partial | open | none(청구 미생성) | None(공실·주인세대)
+    outstanding: int | None
+    lease_end: date | None
+
+
+class DashCounts(BaseModel):
+    total: int
+    rental: int
+    occupied: int
+    vacant: int
+    owner: int
+
+
+class DashMoney(BaseModel):
+    rent_charged: int
+    rent_received: int
+    overdue_total: int
+    overdue_count: int
+    operating_total: int
+    noi: int
+    complete: bool
+
+
+class DueSoon(BaseModel):
+    unit_no: str
+    due_date: date
+    outstanding: int
+
+
+class LeaseEnding(BaseModel):
+    unit_no: str
+    tenant_name: str
+    end_date: date
+    days_left: int
+    deposit_to_return: int | None
+
+
+class TaxEventOut(BaseModel):
+    name: str
+    start: date
+    end: date
+    note: str
+    url: str
+    in_progress: bool
+    days_until_end: int
+
+
+class AttentionItem(BaseModel):
+    level: Literal["warn", "info"]
+    kind: str
+    message: str
+    href: str
+
+
+class DashboardOut(BaseModel):
+    as_of: date
+    period: str
+    bank_data_as_of: datetime | None
+    counts: DashCounts
+    units: list[DashUnit]
+    money: DashMoney
+    due_soon: list[DueSoon]
+    lease_endings: list[LeaseEnding]
+    tax_events: list[TaxEventOut]
+    attention: list[AttentionItem]

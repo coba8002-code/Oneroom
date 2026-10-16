@@ -4,35 +4,24 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.db import get_session
-from app.models import (
-    BankAccount,
-    Charge,
-    Lease,
-    Organization,
-    Property,
-    Tenant,
-    Transaction,
-    TransactionAllocation,
-    Unit,
-)
+from app.models import BankAccount, Organization, Transaction, TransactionAllocation
 from app.schemas import (
     AllocationOut,
-    CreditItem,
     DecisionIn,
     LeaseOut,
     MatchRunOut,
     OrganizationOut,
     QueueItem,
-    ReceivableItem,
     ReceivablesOut,
     SuggestionOut,
     TransactionOut,
 )
-from app.services import ledger, matching
+from app.services import matching
+from app.services import receivables as receivables_service
 
 router = APIRouter(prefix="/api/v1", tags=["payments"])
 KST = ZoneInfo("Asia/Seoul")
@@ -153,44 +142,4 @@ def _alloc_out(session: Session, organization_id: uuid.UUID, a: TransactionAlloc
 def receivables(organization_id: uuid.UUID, as_of: date | None = None,
                 session: Session = Depends(get_session)) -> ReceivablesOut:
     """미수 현황. 독촉 여부는 판단하지 않는다 — 최신 거래 시각·검토 대기 건수를 함께 보여줄 뿐."""
-    as_of = as_of or datetime.now(KST).date()
-    rows = session.execute(
-        select(Charge, Unit.unit_no, Tenant.name)
-        .join(Lease, Charge.lease_id == Lease.id)
-        .join(Unit, Lease.unit_id == Unit.id)
-        .join(Property, Unit.property_id == Property.id)
-        .join(Tenant, Lease.tenant_id == Tenant.id)
-        .where(Property.organization_id == organization_id,
-               Charge.status.in_(("open", "partial")), Charge.due_date <= as_of)
-        .order_by(Charge.due_date, Unit.unit_no)
-    ).all()
-    items = []
-    for c, unit_no, name in rows:
-        paid = ledger.paid_amount(session, c.id)
-        if c.amount - paid <= 0:
-            continue
-        items.append(ReceivableItem(unit_no=unit_no, tenant_name=name, period=c.period,
-                                    due_date=c.due_date, amount=c.amount, paid=paid,
-                                    outstanding=c.amount - paid,
-                                    days_past_due=max(0, (as_of - c.due_date).days)))
-
-    credits = []
-    for li in matching.active_leases(session, organization_id):
-        credit = ledger.lease_credit(session, li.lease.id)
-        if credit > 0:
-            credits.append(CreditItem(unit_no=li.unit_no, credit=credit))
-
-    latest = session.scalar(
-        select(func.max(Transaction.occurred_at))
-        .join(BankAccount, Transaction.bank_account_id == BankAccount.id)
-        .where(BankAccount.organization_id == organization_id))
-    approved = aliased(TransactionAllocation)
-    pending_review = session.scalar(
-        select(func.count()).select_from(
-            _org_txns(organization_id)
-            .where(Transaction.direction == "in",
-                   ~select(approved.id).where(approved.transaction_id == Transaction.id,
-                                              approved.review_status == "approved").exists())
-            .subquery()))
-    return ReceivablesOut(as_of=as_of, bank_data_as_of=latest, pending_review=pending_review,
-                          items=items, credits=credits)
+    return receivables_service.compute(session, organization_id, as_of or datetime.now(KST).date())

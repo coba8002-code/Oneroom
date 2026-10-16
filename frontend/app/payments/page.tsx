@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   api,
   type AllocationOut,
+  type BankAccount,
+  type ImportOut,
   type Category,
   CATEGORY_LABEL,
   kst,
@@ -102,6 +104,14 @@ export default function PaymentsPage() {
           입금 매칭 실행
         </button>
       </div>
+
+      <BankImport orgId={orgId} busy={busy} onFile={(accountId, file) => act(async () => {
+        const fd = new FormData();
+        fd.append("file", file);
+        const r = await api<ImportOut>(`/api/v1/bank-accounts/${accountId}/import`, { method: "POST", body: fd });
+        const errs = r.errors.length ? ` · 읽지 못한 행 ${r.errors.length}개 (${r.errors.slice(0, 3).map((e) => `${e.row}행`).join(", ")}${r.errors.length > 3 ? " …" : ""})` : "";
+        return `${file.name}: 전체 ${r.total_rows}건 · 새로 저장 ${r.inserted} · 이미 있음 ${r.duplicates}${errs}. 이어서 '입금 매칭 실행'을 누르세요.`;
+      })} />
 
       {notice && <p className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
       {error && <p className="whitespace-pre-line rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p>}
@@ -282,6 +292,37 @@ function ReceivablesView({ recv, asOf, onAsOf }: {
           선납 잔액(다음 청구에 자동 차감): {recv.credits.map((c) => `${c.unit_no} ${won(c.credit)}`).join(" · ")}
         </p>
       )}
+    </section>
+  );
+}
+
+function BankImport({ orgId, busy, onFile }: {
+  orgId: string; busy: boolean; onFile: (accountId: string, file: File) => void;
+}) {
+  const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [accountId, setAccountId] = useState("");
+  useEffect(() => {
+    if (!orgId) return;
+    api<BankAccount[]>(`/api/v1/bank-accounts?organization_id=${orgId}`)
+      .then((a) => { setAccounts(a); setAccountId(a[0]?.id ?? ""); })
+      .catch(() => setAccounts([]));
+  }, [orgId]);
+  if (!accounts.length) return null;
+  return (
+    <section className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed bg-white p-3 text-sm">
+      <span className="mr-auto text-slate-600">
+        은행 거래내역 가져오기 <span className="text-xs text-slate-500">(CSV·XLSX, 같은 파일을 다시 올려도 중복 없음)</span>
+      </span>
+      {accounts.length > 1 && (
+        <select className={select} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+          {accounts.map((a) => <option key={a.id} value={a.id}>{a.alias}</option>)}
+        </select>
+      )}
+      <label className={`${btn} cursor-pointer border bg-white hover:bg-slate-50 ${busy ? "pointer-events-none opacity-50" : ""}`}>
+        파일 선택
+        <input type="file" accept=".csv,.xlsx" className="hidden" disabled={busy}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f && accountId) onFile(accountId, f); e.target.value = ""; }} />
+      </label>
     </section>
   );
 }
