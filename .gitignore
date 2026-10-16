@@ -11,3 +11,4 @@ uploads/
 *.tsbuildinfo
 backups/
 mail_outbox/
+deploy/.env

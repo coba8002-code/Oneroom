@@ -6,7 +6,8 @@
 
 ```
 backend/    FastAPI + SQLAlchemy + Alembic (PostgreSQL)
-frontend/   Next.js + TypeScript + Tailwind (온보딩 화면)
+frontend/   Next.js + TypeScript + Tailwind
+deploy/     운영 배포 (docker compose + Caddy HTTPS) — deploy/README.md
 samples/    온보딩 CSV · 은행 거래 CSV 샘플 (가상 데이터)
 docs/       PRD
 ```
@@ -141,6 +142,17 @@ npm run dev                     # http://localhost:3000/onboarding
 - **서버 정기 백업**: `ROOMAX_BACKUP_PASSPHRASE='…' python -m app.backup_cli --out /srv/roomax-backups --keep 30`
   (cron 예시는 설정 화면에). 백업 폴더는 다른 디스크·외부 저장소로 한 번 더 복사 권장
 - 대시보드는 백업한 적이 없거나 30일이 지나면 알려줌
+
+## 운영 배포 (`deploy/`)
+
+서버 1대에 `docker compose up -d --build` — Caddy(HTTPS 자동 발급·갱신) · 화면 · API · PostgreSQL · 정기 백업.
+절차와 확인 목록은 [deploy/README.md](./deploy/README.md).
+
+- 화면과 API 를 **같은 도메인**에 (`/api/*` 만 API 로). 세션 쿠키는 `Secure` · `HttpOnly` · `SameSite=Lax`
+- `ROOMAX_ENV=production` 이면 시작할 때 설정을 검사해 **위험하면 띄우지 않음**: 암호화 키 없음, 쿠키 Secure 꺼짐,
+  메일 링크가 http, 메일이 file 모드(실제로 안 보냄), DB 개발용 비밀번호. 운영에서는 `/docs` 닫힘
+- `GET /api/v1/health` 는 DB 까지 확인 (끊기면 503) — 컨테이너 상태 검사·외부 가동 감시에 사용
+- 정기 백업 파일은 소유자만 읽기(600), 이름은 한국 시각. 해지된 사업장의 백업은 30일 뒤 자동 삭제
 
 ## 화면 디자인
 

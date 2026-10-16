@@ -18,6 +18,7 @@ import os
 import uuid
 import zipfile
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from pathlib import Path
 
@@ -37,6 +38,7 @@ FORMAT = 1
 # 백업을 만든 DB 스키마. 마이그레이션을 추가하면 같이 올린다 (test_backup 이 alembic head 와 비교)
 SCHEMA_REVISION = "0006"
 MIN_PASSPHRASE = 8
+KST = ZoneInfo("Asia/Seoul")
 MAX_BACKUP_BYTES = 300_000_000
 
 # 조직 기준으로 테이블을 고르는 방법. 새 테이블을 만들면 반드시 여기나 EXCLUDED 에 추가 (test_backup 이 검사)
@@ -194,7 +196,7 @@ def export(session: Session, organization_id: uuid.UUID, passphrase: str) -> tup
 
 def filename(manifest: dict, prefix: str = "roomax", full_id: bool = False) -> str:
     """full_id=True 면 사업장 id 전체 (서버에 남기는 안전 백업 — 사업장 해지 때 정확히 찾아 지우기 위해)."""
-    ts = datetime.fromisoformat(manifest["created_at"]).astimezone().strftime("%Y%m%d-%H%M%S")
+    ts = datetime.fromisoformat(manifest["created_at"]).astimezone(KST).strftime("%Y%m%d-%H%M%S")  # 파일 이름은 한국 시각
     org = manifest["organization"]["id"]
     return f"{prefix}-{org if full_id else org[:8]}-{ts}.roomaxbak"
 

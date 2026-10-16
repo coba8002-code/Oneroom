@@ -242,6 +242,25 @@ def test_cli_backs_up_every_org_and_rotates(rich, session_factory, monkeypatch, 
     backup.open_backup((tmp_path / names[-1]).read_bytes(), PASS)
 
 
+def test_cli_removes_backups_of_deleted_orgs_after_grace(rich, session_factory, monkeypatch, tmp_path):
+    import os
+    import time
+    monkeypatch.setattr(backup_cli, "SessionLocal", session_factory)
+    monkeypatch.setenv("ROOMAX_BACKUP_PASSPHRASE", PASS)
+    gone_recent = tmp_path / "roomax-deadbeef-20261101-000000.roomaxbak"
+    gone_old = [tmp_path / f"roomax-0ldc0de0-2026090{i}-000000.roomaxbak" for i in (1, 2)]
+    for p in [gone_recent, *gone_old]:
+        p.write_bytes(b"x")
+    old = time.time() - 40 * 86400
+    for p in gone_old:
+        os.utime(p, (old, old))
+    assert backup_cli.main(["--out", str(tmp_path), "--orphan-days", "30"]) == 0
+    assert gone_recent.exists()  # 해지 30일 안 — 아직 둔다
+    assert not any(p.exists() for p in gone_old)
+    live = rich["organization_id"][:8]
+    assert [p for p in tmp_path.glob(f"roomax-{live}-*.roomaxbak")]  # 살아 있는 사업장 백업은 그대로
+
+
 def test_dashboard_reminds_backup(client, rich):
     org = rich["organization_id"]
     d = client.get("/api/v1/dashboard", params=_p(org, as_of="2026-11-26")).json()

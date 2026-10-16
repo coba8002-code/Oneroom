@@ -1,0 +1,31 @@
+# HTTPS 는 Caddy 가 Let's Encrypt 인증서를 자동으로 받고 갱신한다.
+# 화면과 API 를 한 도메인에 둔다 → 쿠키가 같은 사이트, CORS 불필요.
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# 백업 파일 복구 업로드(최대 300MB)까지 받는다
+	request_body {
+		max_size 310MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+		-Server
+		-X-Powered-By
+	}
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}
