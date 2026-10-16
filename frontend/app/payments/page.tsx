@@ -98,7 +98,7 @@ export default function PaymentsPage() {
           <p className="page-sub">통장 입금을 호실별 월세와 맞추고, 미수를 확인합니다.</p>
         </div>
         {orgs && orgs.length > 1 && (
-          <select className={select} value={orgId} onChange={(e) => setOrgId(e.target.value)}>
+          <select className={select} aria-label="사업장" value={orgId} onChange={(e) => setOrgId(e.target.value)}>
             {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         )}
@@ -212,13 +212,13 @@ function QueueCard({ item, leases, busy, onDecide }: {
         ) : "제안 없음 (거절했거나 확정을 취소한 거래)"}
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <select className={select} value={category} onChange={(e) => setCategory(e.target.value as Category)}>
+        <select className={select} aria-label={`${t.counterparty ?? "입금"} 분류`} value={category} onChange={(e) => setCategory(e.target.value as Category)}>
           {(["rent", "deposit_in", "personal", "owner_household", "other"] as Category[]).map((c) => (
             <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>
           ))}
         </select>
         {needsLease && (
-          <select className={select} value={leaseId} onChange={(e) => setLeaseId(e.target.value)}>
+          <select className={select} aria-label={`${t.counterparty ?? "입금"} 호실`} value={leaseId} onChange={(e) => setLeaseId(e.target.value)}>
             <option value="">호실 선택</option>
             {leases.map((l) => (
               <option key={l.lease_id} value={l.lease_id}>{l.unit_no} · {l.tenant_name} · {won(l.rent)}</option>
@@ -317,7 +317,7 @@ function BankImport({ orgId, busy, onFile }: {
         은행 거래내역 가져오기 <span className="text-xs text-slate-500">(CSV·XLSX, 같은 파일을 다시 올려도 중복 없음)</span>
       </span>
       {accounts.length > 1 && (
-        <select className={select} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+        <select className={select} aria-label="은행 계좌" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
           {accounts.map((a) => <option key={a.id} value={a.id}>{a.alias}</option>)}
         </select>
       )}

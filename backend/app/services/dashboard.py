@@ -186,8 +186,11 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
             "overdue_count": len(overdue),
             "operating_total": month["operating_total"],
             "noi": month["noi"],
-            "non_operating_total": sum(month["excluded"][k] for k in ("personal", "owner_household")),
+            "non_operating_total": (sum(month["excluded"][k] for k in ("personal", "owner_household"))
+                                    if month["bank_covered"] else None),
             "complete": month["complete"],
+            "charges_ready": month["charges_ready"],
+            "bank_covered": month["bank_covered"],
         },
         "recent_transactions": _recent(
             session, organization_id,

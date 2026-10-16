@@ -379,8 +379,8 @@ function SecurityCard() {
       <div className="space-y-2">
         <div className="text-sm font-semibold text-slate-700">비밀번호 변경</div>
         <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-          <input className="field w-full min-w-0" type="password" placeholder="현재 비밀번호" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} />
-          <input className="field w-full min-w-0" type="password" placeholder="새 비밀번호 (10자 이상, 문자+숫자)" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+          <input className="field w-full min-w-0" type="password" aria-label="현재 비밀번호" placeholder="현재 비밀번호" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} />
+          <input className="field w-full min-w-0" type="password" aria-label="새 비밀번호" placeholder="새 비밀번호 (10자 이상, 문자+숫자)" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
           <button type="button" className="btn-secondary whitespace-nowrap" disabled={!cur || next.length < 10}
             onClick={() => run(async () => { await post("/api/v1/auth/password", { current_password: cur, new_password: next }); setCur(""); setNext(""); },
               "비밀번호를 바꿨습니다. 다른 기기는 로그아웃되었습니다.")}>변경</button>
@@ -404,7 +404,7 @@ function SecurityCard() {
               <a href={setup.otpauth_uri} className="font-semibold text-blue-600 underline"> 앱으로 열기</a>.</p>
             <code className="block break-all rounded-lg bg-white p-2 text-center font-mono text-base tracking-wider">{setup.secret.replace(/(.{4})/g, "$1 ").trim()}</code>
             <div className="flex gap-2">
-              <input className="field min-w-0 flex-1 text-center tracking-[0.3em]" inputMode="numeric" maxLength={6} placeholder="6자리 코드"
+              <input className="field min-w-0 flex-1 text-center tracking-[0.3em]" inputMode="numeric" maxLength={6} aria-label="인증 앱 6자리 코드" placeholder="6자리 코드"
                 value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
               <button type="button" className="btn-primary" disabled={code.length !== 6}
                 onClick={() => run(async () => { await post("/api/v1/auth/mfa/enable", { code }); setSetup(null); setCode(""); await reload(); },
@@ -414,8 +414,8 @@ function SecurityCard() {
         )}
         {me.user.mfa_enabled && (
           <div className="flex flex-wrap gap-2">
-            <input className="field min-w-0 flex-1" type="password" placeholder="비밀번호" value={disablePw} onChange={(e) => setDisablePw(e.target.value)} />
-            <input className="field w-28 text-center" inputMode="numeric" maxLength={6} placeholder="코드" value={code}
+            <input className="field min-w-0 flex-1" type="password" aria-label="2단계 인증 끄기 — 비밀번호" placeholder="비밀번호" value={disablePw} onChange={(e) => setDisablePw(e.target.value)} />
+            <input className="field w-28 text-center" inputMode="numeric" maxLength={6} aria-label="2단계 인증 끄기 — 인증 코드" placeholder="코드" value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
             <button type="button" className="btn-secondary whitespace-nowrap" disabled={!disablePw || code.length !== 6}
               onClick={() => run(async () => { await post("/api/v1/auth/mfa/disable", { password: disablePw, code }); setDisablePw(""); setCode(""); await reload(); },
@@ -510,10 +510,10 @@ function DeleteAccountCard() {
             </>
           )}
           <div className="grid gap-2 sm:grid-cols-2">
-            <input className="field w-full min-w-0" type="password" placeholder="비밀번호" autoComplete="current-password"
+            <input className="field w-full min-w-0" type="password" aria-label="탈퇴 확인 — 비밀번호" placeholder="비밀번호" autoComplete="current-password"
               value={password} onChange={(e) => setPassword(e.target.value)} />
             {me.user.mfa_enabled && (
-              <input className="field w-full min-w-0 text-center tracking-[0.3em]" inputMode="numeric" maxLength={6} placeholder="인증 앱 코드"
+              <input className="field w-full min-w-0 text-center tracking-[0.3em]" inputMode="numeric" maxLength={6} aria-label="탈퇴 확인 — 인증 앱 코드" placeholder="인증 앱 코드"
                 value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} />
             )}
           </div>

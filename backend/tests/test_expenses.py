@@ -209,3 +209,20 @@ def test_inbound_confirmed_list_excludes_expenses(client, org, classified):
     _decide(client, org, elec["transaction"]["id"], [{"category": "common_electricity", "amount": 128300}])
     inbound = client.get("/api/v1/allocations", params=_p(org)).json()
     assert inbound and all(a["transaction"]["direction"] == "in" for a in inbound)
+
+
+def test_month_without_bank_data_or_charges_is_unknown_not_zero(client, onboarded):
+    """은행 내역이 그 달에 닿지 않으면 입금·운영비·NOI 는 모름(null). 0 으로 채우지 않는다 (CLAUDE.md 규칙 7)."""
+    org = onboarded["organization_id"]
+    raw = (SAMPLES / "bank_transactions_sample.csv").read_bytes()
+    client.post(f"/api/v1/bank-accounts/{onboarded['bank_account_id']}/import", params=_p(org), files={"file": ("s.csv", raw)})
+    client.post("/api/v1/charges/generate", params=_p(org, period="2026-11"))
+    nov = _report(client, org, "2026-11")
+    assert nov["bank_covered"] and nov["charges_ready"] and nov["rent_charged"] == 3_610_000
+    dec = _report(client, org, "2026-12")  # 은행 내역은 11-30 까지, 12월 청구도 아직
+    assert dec["bank_covered"] is False and dec["charges_ready"] is False
+    assert dec["rent_charged"] is None and dec["rent_received"] is None
+    assert dec["operating_total"] is None and dec["noi"] is None
+    assert set(dec["operating"].values()) == {None} and set(dec["excluded"].values()) == {None}
+    oct_ = _report(client, org, "2026-10")  # 은행 내역은 11-01 부터 — 그 전 달도 모름
+    assert oct_["bank_covered"] is False and oct_["noi"] is None

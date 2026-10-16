@@ -170,15 +170,15 @@ function DashboardBody({ d, busy, onGenerate }: { d: Dashboard; busy: boolean; o
     <>
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-5 lg:gap-4">
         <Kpi icon={CalendarDays} tone="blue" label="이번 달 임대수입" value={won(d.money.rent_charged)}
-          sub={`임대 ${d.counts.occupied}호실 청구 기준`} />
+          sub={d.money.charges_ready ? `임대 ${d.counts.occupied}호실 청구 기준` : "이번 달 청구 전"} />
         <Kpi icon={Wallet} tone="green" label="입금 완료" value={won(d.money.rent_received)}
-          sub={`${paidCount}/${occupied.length} 호실 완납`} />
+          sub={d.money.bank_covered ? `${paidCount}/${occupied.length} 호실 완납` : "이번 달 은행 내역 없음"} href="/payments" />
         <Kpi icon={AlertCircle} tone={unsure ? "orange" : "red"} label={unsure ? "미납 금액 (확인 전)" : "미납 금액"}
           value={won(d.money.overdue_total)} sub={`${d.money.overdue_count}건 · 납부일 지남`} href="/payments" />
         <Kpi icon={Receipt} tone="violet" label="이번 달 운영비" value={won(d.money.operating_total)}
-          sub="전기 · 수도 · 청소 · 수리" href="/expenses" />
+          sub={d.money.bank_covered ? "전기 · 수도 · 청소 · 수리" : "이번 달 은행 내역 없음"} href="/expenses" />
         <Kpi icon={TrendingUp} tone="noi" label={d.money.complete ? "순운영수익" : "순운영수익 (확정 전)"}
-          value={won(d.money.noi)} sub="확인된 입금 − 운영비" href="/expenses" wide />
+          value={won(d.money.noi)} sub={d.money.bank_covered ? "확인된 입금 − 운영비" : "은행 내역을 가져오면 계산"} href="/expenses" wide />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-12">
@@ -343,8 +343,8 @@ const BARS = [
 ] as const;
 
 function FlowChart({ d }: { d: Dashboard }) {
-  const values = BARS.map((b) => d.money[b.key]);
-  const max = Math.max(...values, 1);
+  const values = BARS.map((b) => d.money[b.key]);  // null = 모름 → 막대 없이 '—'
+  const max = Math.max(...values.map((v) => v ?? 0), 1);
   return (
     <div className="card p-4 sm:p-5">
       <CardHead title="이번 달 수입·지출 현황" action={<a href="/expenses" className="btn-secondary btn-sm">더보기</a>} />
@@ -352,11 +352,11 @@ function FlowChart({ d }: { d: Dashboard }) {
       <div className="flex h-44 items-end justify-around gap-4 border-b border-slate-200 px-2" role="list" aria-label="이번 달 수입·지출">
         {BARS.map((b, i) => {
           const v = values[i];
-          const h = Math.max((v / max) * 100, v > 0 ? 2 : 0);
+          const h = v == null ? 0 : Math.max((v / max) * 100, v > 0 ? 2 : 0);
           return (
             <div key={b.key} role="listitem" aria-label={`${b.label} ${won(v)}`}
               className="group relative flex h-full w-16 flex-col items-center justify-end">
-              <span className="mb-1 text-sm font-semibold tabular-nums text-slate-700">{Math.round(v / 10000).toLocaleString("ko-KR")}</span>
+              <span className="mb-1 text-sm font-semibold tabular-nums text-slate-700">{v == null ? "—" : Math.round(v / 10000).toLocaleString("ko-KR")}</span>
               <div className="w-full rounded-t-[4px] transition-opacity group-hover:opacity-85" style={{ height: `${h}%`, background: b.color }} />
               <div className="pointer-events-none absolute -top-8 z-10 hidden whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-xs text-white shadow group-hover:block">
                 {b.label} {won(v)}
@@ -368,6 +368,7 @@ function FlowChart({ d }: { d: Dashboard }) {
       <div className="mt-2 flex justify-around text-xs text-slate-600">
         {BARS.map((b) => <span key={b.key} className="w-16 text-center">{b.label}</span>)}
       </div>
+      {!d.money.bank_covered && <p className="mt-3 text-xs text-slate-500">이번 달 은행 내역이 아직 없어 수입·지출을 알 수 없습니다.</p>}
       <p className="mt-3 text-[11px] text-slate-400">임대수입 = 확인된 월세 입금 · 기타지출 = 생활비·주인세대 (순운영수익 제외)</p>
     </div>
   );

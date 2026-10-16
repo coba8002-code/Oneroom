@@ -101,7 +101,7 @@ export default function ExpensesPage() {
           <p className="page-sub">통장 출금을 운영비·주인세대·생활비로 나누고 순운영수익을 계산합니다.</p>
         </div>
         {orgs && orgs.length > 1 && (
-          <select className={field} value={orgId} onChange={(e) => setOrgId(e.target.value)}>
+          <select className={field} aria-label="사업장" value={orgId} onChange={(e) => setOrgId(e.target.value)}>
             {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         )}
@@ -226,9 +226,15 @@ function Report({ report: r, period, onPeriod }: {
     <section className="card space-y-3 p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="mr-auto font-semibold">월 결산</h2>
-        <input type="month" className={field} value={period} onChange={(e) => e.target.value && onPeriod(e.target.value)} />
+        <input type="month" aria-label="결산 월" className={field} value={period} onChange={(e) => e.target.value && onPeriod(e.target.value)} />
       </div>
-      {!r.complete && (
+      {(!r.bank_covered || !r.charges_ready) && (
+        <p className="rounded-xl bg-slate-100 p-2 text-xs text-slate-700">
+          {!r.charges_ready && "이 달 청구를 아직 만들지 않아 청구액을 모릅니다. "}
+          {!r.bank_covered && "이 달 은행 내역이 없어 입금·운영비·순운영수익을 알 수 없습니다 — 은행 거래내역을 가져오면 계산합니다."}
+        </p>
+      )}
+      {r.bank_covered && !r.complete && (
         <p className="rounded-xl bg-amber-50 p-2 text-xs text-amber-900">
           확정 전 수치 — 이 달 미확정 거래: 입금 {r.unconfirmed_in}건 · 출금 {r.unconfirmed_out}건.
           수납·운영비 검토를 마치면 확정 수치가 됩니다.
@@ -246,7 +252,7 @@ function Report({ report: r, period, onPeriod }: {
           <dl className="space-y-0.5">
             {OPERATING.map((c) => (
               <div key={c} className="flex justify-between"><dt>{CATEGORY_LABEL[c]}</dt>
-                <dd className="tabular-nums">{won(r.operating[c] ?? 0)}</dd></div>
+                <dd className="tabular-nums">{won(r.bank_covered ? (r.operating[c] ?? 0) : null)}</dd></div>
             ))}
           </dl>
         </div>
@@ -255,7 +261,7 @@ function Report({ report: r, period, onPeriod }: {
           <dl className="space-y-0.5">
             {(["personal", "owner_household", "deposit_in", "deposit_out"] as const).map((c) => (
               <div key={c} className="flex justify-between"><dt>{CATEGORY_LABEL[c]}</dt>
-                <dd className="tabular-nums">{won(r.excluded[c] ?? 0)}</dd></div>
+                <dd className="tabular-nums">{won(r.bank_covered ? (r.excluded[c] ?? 0) : null)}</dd></div>
             ))}
           </dl>
           <p className="mt-1 text-xs text-slate-500">보증금은 돌려줄 돈(부채)이라 수입·비용이 아닙니다.</p>
@@ -315,7 +321,7 @@ function OutCard({ item, units, leases, busy, onDecide }: {
       <div className="mt-2 space-y-2">
         {rows.map((r) => (
           <div key={r.key} className="flex flex-wrap items-center gap-2">
-            <select className={field} value={r.category} onChange={(e) => update(r.key, { category: e.target.value as OutCategory })}>
+            <select className={field} aria-label={`${t.counterparty ?? "출금"} 분류`} value={r.category} onChange={(e) => update(r.key, { category: e.target.value as OutCategory })}>
               <optgroup label="운영비">
                 {OPERATING.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
               </optgroup>
@@ -325,15 +331,15 @@ function OutCard({ item, units, leases, busy, onDecide }: {
               </optgroup>
             </select>
             <input className={`${field} w-32 text-right tabular-nums`} inputMode="numeric" value={r.amount}
-              aria-label="금액" onChange={(e) => update(r.key, { amount: e.target.value })} />
+              aria-label={`${t.counterparty ?? "출금"} 금액`} onChange={(e) => update(r.key, { amount: e.target.value })} />
             {r.category === "repair" && (
-              <select className={field} value={r.unit_id} onChange={(e) => update(r.key, { unit_id: e.target.value })}>
+              <select className={field} aria-label={`${t.counterparty ?? "출금"} 수리 호실`} value={r.unit_id} onChange={(e) => update(r.key, { unit_id: e.target.value })}>
                 <option value="">호실 (선택)</option>
                 {units.map((u) => <option key={u.unit_id} value={u.unit_id}>{u.unit_no}</option>)}
               </select>
             )}
             {r.category === "deposit_out" && (
-              <select className={field} value={leaseId} onChange={(e) => setLeaseId(e.target.value)}>
+              <select className={field} aria-label={`${t.counterparty ?? "출금"} 보증금 반환 계약`} value={leaseId} onChange={(e) => setLeaseId(e.target.value)}>
                 <option value="">계약 선택</option>
                 {leases.map((l) => <option key={l.lease_id} value={l.lease_id}>{l.unit_no} · {l.tenant_name}</option>)}
                 {s?.lease_id && !leases.some((l) => l.lease_id === s.lease_id) && (
@@ -401,16 +407,16 @@ function ManualExpense({ units, busy, onAdd }: {
       <p className="text-xs text-slate-500">통장을 거치지 않은 지출만 여기에. 통장 출금은 위 검토 대기에서 확정하세요.</p>
       <div className="flex flex-wrap items-center gap-2">
         <input type="date" className={field} value={spentOn} onChange={(e) => setSpentOn(e.target.value)} aria-label="날짜" />
-        <select className={field} value={category} onChange={(e) => setCategory(e.target.value as ExpenseCategory)}>
+        <select className={field} aria-label="지출 분류" value={category} onChange={(e) => setCategory(e.target.value as ExpenseCategory)}>
           {EXPENSE_CATS.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
         </select>
-        <input className={`${field} w-32 text-right`} inputMode="numeric" placeholder="금액" value={amount}
+        <input className={`${field} w-32 text-right`} inputMode="numeric" aria-label="금액 (원)" placeholder="금액" value={amount}
           onChange={(e) => setAmount(e.target.value)} />
-        <select className={field} value={unitId} onChange={(e) => setUnitId(e.target.value)}>
+        <select className={field} aria-label="호실 (선택)" value={unitId} onChange={(e) => setUnitId(e.target.value)}>
           <option value="">호실 (선택)</option>
           {units.map((u) => <option key={u.unit_id} value={u.unit_id}>{u.unit_no}</option>)}
         </select>
-        <input className={`${field} w-full min-w-0 sm:w-auto sm:flex-1`} placeholder="메모 (선택)" maxLength={200} value={memo}
+        <input className={`${field} w-full min-w-0 sm:w-auto sm:flex-1`} aria-label="메모 (선택)" placeholder="메모 (선택)" maxLength={200} value={memo}
           onChange={(e) => setMemo(e.target.value)} />
         <button type="button" disabled={busy || toInt(amount) <= 0 || !spentOn} className={primary}
           onClick={async () => {

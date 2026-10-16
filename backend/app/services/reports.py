@@ -51,12 +51,12 @@ def monthly(session: Session, organization_id: uuid.UUID, period: str) -> dict:
         .group_by(Expense.category)
     ).all())
 
-    rent_charged = session.scalar(
-        select(func.coalesce(func.sum(Charge.amount), 0))
+    rent_charged, charge_count = session.execute(
+        select(func.coalesce(func.sum(Charge.amount), 0), func.count(Charge.id))
         .join(Lease, Charge.lease_id == Lease.id)
         .join(Unit, Lease.unit_id == Unit.id)
         .join(Property, Unit.property_id == Property.id)
-        .where(Property.organization_id == organization_id, Charge.period == period))
+        .where(Property.organization_id == organization_id, Charge.period == period)).one()
 
     approved = aliased(TransactionAllocation)
     unconfirmed = dict(session.execute(
@@ -66,22 +66,30 @@ def monthly(session: Session, organization_id: uuid.UUID, period: str) -> dict:
         .group_by(Transaction.direction)
     ).all())
 
-    rent_received = alloc_sum("rent")
-    operating = {c: int(expenses.get(c, 0)) for c in OPERATING}
-    operating_total = sum(operating.values())
-    latest = session.scalar(org_transactions(organization_id).with_only_columns(
-        func.max(Transaction.occurred_at)))
+    earliest, latest = (
+        t.replace(tzinfo=timezone.utc) if t is not None and t.tzinfo is None else t  # SQLite 는 시간대 없이 돌려줌 (저장은 UTC)
+        for t in session.execute(org_transactions(organization_id).with_only_columns(
+            func.min(Transaction.occurred_at), func.max(Transaction.occurred_at))).one())
+    # 모르면 비워 둔다 (CLAUDE.md 규칙 7): 청구 전이면 청구액을, 은행 내역 기간이 이 달과 겹치지 않으면 입금·지출을 모름
+    charges_ready = charge_count > 0
+    bank_covered = latest is not None and earliest < end and latest >= start
+    known = lambda v: int(v) if bank_covered else None  # noqa: E731
+    operating = {c: known(expenses.get(c, 0)) for c in OPERATING}
+    operating_total = known(sum(int(expenses.get(c, 0)) for c in OPERATING))
+    rent_received = known(alloc_sum("rent"))
     return {
         "period": period,
-        "rent_charged": int(rent_charged),
-        "rent_received": int(rent_received),
+        "charges_ready": charges_ready,
+        "bank_covered": bank_covered,
+        "rent_charged": int(rent_charged) if charges_ready else None,
+        "rent_received": rent_received,
         "operating": operating,
         "operating_total": operating_total,
-        "noi": int(rent_received) - operating_total,
+        "noi": rent_received - operating_total if bank_covered else None,
         "excluded": {
-            **{c: int(expenses.get(c, 0)) for c in NON_OPERATING},
-            "deposit_in": int(alloc_sum("deposit_in")),
-            "deposit_out": int(alloc_sum("deposit_out")),
+            **{c: known(expenses.get(c, 0)) for c in NON_OPERATING},
+            "deposit_in": known(alloc_sum("deposit_in")),
+            "deposit_out": known(alloc_sum("deposit_out")),
         },
         "unconfirmed_in": int(unconfirmed.get("in", 0)),
         "unconfirmed_out": int(unconfirmed.get("out", 0)),

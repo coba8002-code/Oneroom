@@ -164,14 +164,17 @@ export interface ExpenseRuleOut {
   splits: { category: string; bp: number }[];
 }
 
+/** null = 모름 (청구 전이거나 은행 내역이 그 달에 닿지 않음) → 화면은 '—' */
 export interface MonthlyReport {
   period: string;
-  rent_charged: number;
-  rent_received: number;
-  operating: Record<string, number>;
-  operating_total: number;
-  noi: number;
-  excluded: Record<string, number>;
+  charges_ready: boolean;
+  bank_covered: boolean;
+  rent_charged: number | null;
+  rent_received: number | null;
+  operating: Record<string, number | null>;
+  operating_total: number | null;
+  noi: number | null;
+  excluded: Record<string, number | null>;
   unconfirmed_in: number;
   unconfirmed_out: number;
   complete: boolean;
@@ -256,14 +259,16 @@ export interface Dashboard {
     lease_end: string | null;
   }[];
   money: {
-    rent_charged: number;
-    rent_received: number;
+    rent_charged: number | null;  // null = 모름 → '—'
+    rent_received: number | null;
     overdue_total: number;
     overdue_count: number;
-    operating_total: number;
-    noi: number;
-    non_operating_total: number;
+    operating_total: number | null;
+    noi: number | null;
+    non_operating_total: number | null;
     complete: boolean;
+    charges_ready: boolean;
+    bank_covered: boolean;
   };
   recent_transactions: { occurred_at: string; direction: "in" | "out"; amount: number; label: string; confirmed: boolean }[];
   due_soon: { unit_no: string; due_date: string; outstanding: number }[];

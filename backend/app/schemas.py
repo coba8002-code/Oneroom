@@ -260,13 +260,16 @@ class UnitOut(BaseModel):
 
 
 class MonthlyReportOut(BaseModel):
+    """null = 모름 (청구 전이거나 은행 내역이 그 달에 닿지 않음). 화면은 '—'."""
     period: str
-    rent_charged: int
-    rent_received: int
-    operating: dict[str, int]
-    operating_total: int
-    noi: int
-    excluded: dict[str, int]
+    charges_ready: bool  # 그 달 청구를 만들었는가
+    bank_covered: bool  # 은행 내역이 그 달 1일 이후까지 있는가
+    rent_charged: int | None
+    rent_received: int | None
+    operating: dict[str, int | None]
+    operating_total: int | None
+    noi: int | None
+    excluded: dict[str, int | None]
     unconfirmed_in: int
     unconfirmed_out: int
     complete: bool
@@ -304,14 +307,17 @@ class DashCounts(BaseModel):
 
 
 class DashMoney(BaseModel):
-    rent_charged: int
-    rent_received: int
+    """null = 모름 (MonthlyReportOut 과 같은 규칙). 화면은 '—'."""
+    rent_charged: int | None
+    rent_received: int | None
     overdue_total: int
     overdue_count: int
-    operating_total: int
-    noi: int
-    non_operating_total: int  # 생활비 + 주인세대 (NOI 제외)
+    operating_total: int | None
+    noi: int | None
+    non_operating_total: int | None  # 생활비 + 주인세대 (NOI 제외)
     complete: bool
+    charges_ready: bool
+    bank_covered: bool
 
 
 class RecentTransaction(BaseModel):

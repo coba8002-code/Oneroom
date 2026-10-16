@@ -230,7 +230,7 @@ function UnitCard({ row: r, index, onChange, onRemove }: {
     <div className={`card p-3 ${owner ? "border-slate-300 bg-slate-50" : ""}`}>
       <div className="mb-2 flex items-center gap-2 text-sm">
         <span className="font-medium text-slate-500">#{index + 1}</span>
-        <select className="field py-1" value={r.use_type}
+        <select className="field py-1" aria-label={`#${index + 1} 용도`} value={r.use_type}
           onChange={(e) => onChange({ use_type: e.target.value as UseType })}>
           <option value="rental">임대</option>
           <option value="owner">주인세대</option>
@@ -305,7 +305,7 @@ function NextSteps({ result }: { result: OnboardingOut }) {
       <section className="space-y-3 card p-4">
         <h2 className="card-title">1. 월 청구 만들기</h2>
         <div className="flex items-center gap-2">
-          <input type="month" className={`${input} w-auto`} value={period} onChange={(e) => setPeriod(e.target.value)} />
+          <input type="month" aria-label="청구 월" className={`${input} w-auto`} value={period} onChange={(e) => setPeriod(e.target.value)} />
           <button type="button" className={`${btn} bg-blue-600 text-white hover:bg-blue-700`} onClick={generate}>
             청구 생성
           </button>
@@ -337,7 +337,7 @@ function NextSteps({ result }: { result: OnboardingOut }) {
           인터넷뱅킹에서 받은 CSV 또는 XLSX. 같은 파일을 다시 올려도 거래가 중복되지 않습니다.
           입금 매칭은 다음 단계에서 검토 후 확정합니다.
         </p>
-        <input type="file" accept=".csv,.xlsx" className="text-sm"
+        <input type="file" aria-label="은행 거래내역 파일 (CSV·XLSX)" accept=".csv,.xlsx" className="text-sm"
           onChange={(e) => e.target.files?.[0] && importBank(e.target.files[0])} />
         {imported && (
           <div className="text-sm">

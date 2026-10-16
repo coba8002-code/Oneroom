@@ -23,7 +23,11 @@ def test_fresh_onboarding_flags_missing_data(client, onboarded):
     assert u101["charge_status"] == "none" and u101["outstanding"] is None  # 청구 전 → 모름, 0 아님
     owner = next(u for u in d["units"] if u["unit_no"] == "401")
     assert owner["charge_status"] is None and owner["tenant_name"] is None
-    assert d["money"]["rent_charged"] == 0 and d["money"]["complete"] is True
+    # 청구 전·은행 내역 없음 → 0 이 아니라 모름(null), 화면은 '—'
+    m = d["money"]
+    assert m["rent_charged"] is None and m["charges_ready"] is False
+    assert m["rent_received"] is None and m["operating_total"] is None and m["noi"] is None
+    assert m["non_operating_total"] is None and m["bank_covered"] is False
 
 
 def test_after_matching(client, onboarded):
