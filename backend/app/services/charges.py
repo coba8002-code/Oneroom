@@ -4,8 +4,9 @@
 - 납부일은 계약마다 다르다 (leases.due_day).
 - 그 달에 납부일이 없으면 말일 (31일 → 2월 28/29일, 4월 30일).
 - 납부일에 계약이 유효할 때만 청구한다 (start_date ≤ 납부일 ≤ end_date).
-  중간 입주·퇴거 일할 계산은 정책 미정 — CLAUDE.md "물어볼 것" 참고.
+  일할 계산 없음 — 월세 전액 (CLAUDE.md "확정된 정책").
 - (lease_id, period) 유일 → 다시 실행해도 중복 청구 없음.
+- 선납 잔액이 있으면 새 청구에 바로 차감한다.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AuditLog, Charge, Lease, Property, Unit
+from app.services.ledger import apply_credits
 
 PERIOD_RE = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
 
@@ -68,6 +70,11 @@ def generate_charges(
         charge = Charge(lease_id=lease.id, period=period, due_date=due, amount=lease.rent, status="open")
         session.add(charge)
         result.append((charge, unit_no))
+
+    session.flush()
+    for charge, _ in result:
+        if charge.lease_id not in existing:
+            apply_credits(session, charge.lease_id)
 
     created = len(result) - already
     session.add(AuditLog(

@@ -70,8 +70,91 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`서버(${API_BASE})에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인하세요.`);
   }
   if (!res.ok) throw new Error(await errorText(res));
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
 export const won = (n: number | null | undefined) =>
   n == null ? "—" : `${n.toLocaleString("ko-KR")}원`;
+
+export interface Organization {
+  id: string;
+  name: string;
+}
+
+export interface LeaseOut {
+  lease_id: string;
+  unit_no: string;
+  tenant_name: string;
+  rent: number;
+  due_day: number;
+}
+
+export interface TransactionOut {
+  id: string;
+  occurred_at: string;
+  amount: number;
+  direction: "in" | "out";
+  counterparty: string | null;
+  description: string | null;
+}
+
+export type Category = "rent" | "deposit_in" | "personal" | "owner_household" | "other";
+
+export const CATEGORY_LABEL: Record<string, string> = {
+  rent: "월세",
+  deposit_in: "보증금 수령",
+  personal: "개인 생활비",
+  owner_household: "주인세대",
+  other: "기타",
+  unclassified: "미분류",
+};
+
+export interface QueueItem {
+  transaction: TransactionOut;
+  suggestion: {
+    allocation_id: string;
+    lease_id: string | null;
+    unit_no: string | null;
+    category: string;
+    confidence: number | null;
+    reason: string | null;
+  } | null;
+}
+
+export interface AllocationOut {
+  id: string;
+  transaction: TransactionOut;
+  lease_id: string | null;
+  unit_no: string | null;
+  category: string;
+  amount: number;
+  confidence: number | null;
+  reason: string | null;
+}
+
+export interface Receivables {
+  as_of: string;
+  bank_data_as_of: string | null;
+  pending_review: number;
+  items: {
+    unit_no: string;
+    tenant_name: string;
+    period: string;
+    due_date: string;
+    amount: number;
+    paid: number;
+    outstanding: number;
+    days_past_due: number;
+  }[];
+  credits: { unit_no: string; credit: number }[];
+}
+
+/** 저장은 UTC, 표시는 KST */
+export const kst = (iso: string | null) =>
+  iso == null
+    ? "—"
+    : new Date(iso).toLocaleString("ko-KR", {
+        timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hour12: false,
+      });

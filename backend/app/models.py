@@ -116,6 +116,17 @@ class Lease(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+class PayerAlias(Base):
+    """통장에 찍히는 입금자명 → 계약. 관리자가 매칭을 승인할 때 학습한다."""
+    __tablename__ = "payer_aliases"
+    __table_args__ = (UniqueConstraint("organization_id", "name", name="uq_payer_aliases_name"),)
+    id: Mapped[uuid.UUID] = pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    lease_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leases.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))  # normalize_name() 결과
+    created_at: Mapped[datetime] = created_at()
+
+
 class LeaseDocument(Base):
     """계약서 이미지와 OCR 결과. verified_at 이 채워지기 전에는 원장에 반영하지 않는다."""
     __tablename__ = "lease_documents"
@@ -164,7 +175,7 @@ class TransactionAllocation(Base):
     id: Mapped[uuid.UUID] = pk()
     transaction_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("transactions.id"), index=True)
     lease_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("leases.id"), index=True)
-    # rent | deposit_in | deposit_out | common_expense | owner_household | personal | other
+    # rent | deposit_in | deposit_out | common_expense | owner_household | personal | other | unclassified
     category: Mapped[str] = mapped_column(String(30))
     amount: Mapped[int] = mapped_column(BigInteger)
     review_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | approved | rejected

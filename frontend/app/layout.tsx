@@ -16,7 +16,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3">
             <a href="/" className="font-bold tracking-tight">ROOMAX</a>
             <nav className="text-sm text-slate-600">
-              <a href="/onboarding" className="hover:text-slate-900">초기 등록</a>
+              <a href="/onboarding" className="mr-4 hover:text-slate-900">초기 등록</a>
+              <a href="/payments" className="hover:text-slate-900">수납</a>
             </nav>
           </div>
         </header>

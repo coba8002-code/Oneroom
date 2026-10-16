@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -106,3 +106,92 @@ class ImportOut(BaseModel):
     inserted: int
     duplicates: int
     errors: list[RowError]
+
+
+# ── 입금 매칭 · 미수 ─────────────────────────────────────────
+
+class OrganizationOut(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
+class LeaseOut(BaseModel):
+    lease_id: uuid.UUID
+    unit_no: str
+    tenant_name: str
+    rent: int
+    due_day: int
+
+
+class MatchRunOut(BaseModel):
+    auto_confirmed: int
+    pending: int
+
+
+class TransactionOut(BaseModel):
+    id: uuid.UUID
+    occurred_at: datetime
+    amount: int
+    direction: str
+    counterparty: str | None
+    description: str | None
+
+
+Category = Literal["rent", "deposit_in", "personal", "owner_household", "other"]
+
+
+class SuggestionOut(BaseModel):
+    allocation_id: uuid.UUID
+    lease_id: uuid.UUID | None
+    unit_no: str | None
+    category: str
+    confidence: float | None
+    reason: str | None
+
+
+class QueueItem(BaseModel):
+    transaction: TransactionOut
+    suggestion: SuggestionOut | None  # None = 제안을 거절했거나 확정을 취소한 거래
+
+
+class DecisionIn(BaseModel):
+    lease_id: uuid.UUID | None = None
+    category: Category
+    remember_alias: bool = False
+
+
+class AllocationOut(BaseModel):
+    id: uuid.UUID
+    transaction: TransactionOut
+    lease_id: uuid.UUID | None
+    unit_no: str | None
+    category: str
+    amount: int
+    review_status: str
+    confidence: float | None
+    reason: str | None
+
+
+class ReceivableItem(BaseModel):
+    unit_no: str
+    tenant_name: str
+    period: str
+    due_date: date
+    amount: int
+    paid: int
+    outstanding: int
+    days_past_due: int
+
+
+class CreditItem(BaseModel):
+    unit_no: str
+    credit: int
+
+
+class ReceivablesOut(BaseModel):
+    as_of: date
+    # 미납 판단의 근거가 되는 최신 거래 시각. 오래됐으면 미납이 아닐 수 있다 (PRD §4)
+    bank_data_as_of: datetime | None
+    pending_review: int
+    items: list[ReceivableItem]
+    credits: list[CreditItem]

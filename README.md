@@ -40,8 +40,25 @@ npm run dev                     # http://localhost:3000/onboarding
 | 월 청구 생성 (호실별 납부일, 말일 보정, 재실행해도 중복 없음) | `POST /api/v1/charges/generate?organization_id=…&period=2026-11` |
 | 월 청구 조회 | `GET /api/v1/charges?organization_id=…&period=2026-11` |
 | 은행 거래 CSV/XLSX 가져오기 (재업로드 중복 없음) | `POST /api/v1/bank-accounts/{id}/import` · 샘플 `samples/bank_transactions_sample.csv` |
-| 전체 데이터 모델 마이그레이션 (PRD §5, 19개 테이블) | `backend/alembic/versions/0001_initial_schema.py` |
+| 전체 데이터 모델 마이그레이션 (PRD §5, 19개 테이블 + 입금자 별칭) | `backend/alembic/versions/` |
+| 입금 매칭 실행 (확실한 것만 자동 확정, 나머지 검토 대기) | `POST /api/v1/matching/run` · `/payments` 화면 |
+| 검토 대기열 · 관리자 확정 · 별칭 학습 · 확정 취소 | `GET /api/v1/matching/queue` · `POST /api/v1/transactions/{id}/decision` · `POST /api/v1/allocations/{id}/cancel` |
+| 미수 현황 (은행 내역 최신 시각·검토 대기 건수 함께, 자동 독촉 없음) | `GET /api/v1/receivables` |
+
+### 입금 매칭 규칙
+
+| 상황 | 처리 |
+|---|---|
+| 입금자명(이름·별칭)이 계약 1건에만 일치 + 금액 = 가장 오래된 미납 청구 잔액 | **자동 확정** (신뢰도 95%) |
+| 이름 일치, 금액이 적음 / 많음 / 미납 없음 | 검토 대기 — 부분납부 / 선납 제안 |
+| 이름 일치, 금액 = 미수령 보증금 | 검토 대기 — 보증금 수령 제안 (부채, 매출 아님) |
+| 입금자 미등록, 같은 금액 청구가 1건 | 검토 대기 — 금액만 일치 (50%) |
+| 입금자 미등록, 같은 금액 청구가 여러 건 | 검토 대기 — 호실을 추측하지 않음 |
+
+- 배분은 가장 오래된 미납 청구부터. 남는 돈은 선납 잔액 → 다음 달 청구 생성 시 자동 차감
+- 승인할 때 "입금자명 기억"을 고르면 다음 달부터 그 이름으로 자동 확정
+- 자동 확정도 취소 가능 → 청구는 미납으로, 거래는 검토 대기로 돌아감 (모든 결정은 `audit_logs`)
 
 ## 다음 단계
 
-입금 매칭(검토 대기 큐) → 운영비 분리 → 대시보드 → 계약서 OCR 검수 → 백업/복구.
+운영비 분리(출금 분류·혼합 거래 배분, 생활비 NOI 제외) → 대시보드 → 계약서 OCR 검수 → 백업/복구.

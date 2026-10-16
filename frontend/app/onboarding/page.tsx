@@ -347,6 +347,9 @@ function NextSteps({ result }: { result: OnboardingOut }) {
                 {imported.errors.map((e) => <li key={e.row}>{e.row}행: {e.message}</li>)}
               </ul>
             )}
+            <a href="/payments" className={`${btn} mt-3 inline-block bg-slate-900 text-white hover:bg-slate-700`}>
+              입금 매칭하러 가기 →
+            </a>
           </div>
         )}
       </section>
