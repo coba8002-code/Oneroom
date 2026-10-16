@@ -115,13 +115,13 @@ def cancel(allocation_id: uuid.UUID, organization_id: uuid.UUID,
 @router.get("/allocations", response_model=list[AllocationOut])
 def allocations(organization_id: uuid.UUID, limit: int = 50,
                 session: Session = Depends(get_session)) -> list[AllocationOut]:
-    """최근 확정된 입금 배분 (자동 확정 포함). 잘못됐으면 취소."""
+    """최근 확정된 입금 배분 (자동 확정 포함). 잘못됐으면 취소. 출금은 /expenses/confirmed."""
     rows = session.scalars(
         select(TransactionAllocation)
         .join(Transaction, TransactionAllocation.transaction_id == Transaction.id)
         .join(BankAccount, Transaction.bank_account_id == BankAccount.id)
-        .where(BankAccount.organization_id == organization_id,
-               TransactionAllocation.review_status == "approved")
+        .where(BankAccount.organization_id == organization_id, Transaction.direction == "in",
+               TransactionAllocation.review_status == "approved")  # 출금 확정은 운영비 화면에서
         .order_by(Transaction.occurred_at.desc())
         .limit(min(limit, 200))
     ).all()

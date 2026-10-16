@@ -202,3 +202,10 @@ def test_rule_delete(client, org, classified):
     rule = client.get("/api/v1/expense-rules", params=_p(org)).json()[0]
     assert client.delete(f"/api/v1/expense-rules/{rule['id']}", params=_p(org)).status_code == 204
     assert client.get("/api/v1/expense-rules", params=_p(org)).json() == []
+
+
+def test_inbound_confirmed_list_excludes_expenses(client, org, classified):
+    elec = _item(client, org, "한국전력공사")
+    _decide(client, org, elec["transaction"]["id"], [{"category": "common_electricity", "amount": 128300}])
+    inbound = client.get("/api/v1/allocations", params=_p(org)).json()
+    assert inbound and all(a["transaction"]["direction"] == "in" for a in inbound)
