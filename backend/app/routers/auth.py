@@ -1,15 +1,19 @@
 """회원가입 · 로그인 · 계정."""
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from datetime import timedelta
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import auth
 from app.auth import Member, current_member
+from app.config import settings
 from app.db import get_session
-from app.models import AuditLog, Organization, User
+from app.models import AuditLog, EmailToken, Organization, User
+from app.services import mailer
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -40,6 +44,19 @@ class CodeIn(BaseModel):
     code: str = Field(max_length=10)
 
 
+class TokenIn(BaseModel):
+    token: str = Field(max_length=200)
+
+
+class ResetRequestIn(BaseModel):
+    email: str = Field(max_length=320)
+
+
+class ResetConfirmIn(BaseModel):
+    token: str = Field(max_length=200)
+    new_password: str = Field(max_length=200)
+
+
 class MarketingIn(BaseModel):
     agree: bool
 
@@ -54,9 +71,42 @@ def _me(session: Session, user: User) -> dict:
     return {
         "user": {"id": str(user.id), "email": user.email, "name": user.name, "role": user.role,
                  "mfa_enabled": user.mfa_enabled_at is not None,
+                 "email_verified": user.email_verified_at is not None,
                  "marketing_agreed": user.marketing_agreed_at is not None},
         "organization": {"id": str(org.id), "name": org.name},
     }
+
+
+VERIFY_TTL = timedelta(hours=24)
+RESET_TTL = timedelta(hours=1)
+BAD_LINK = "링크가 만료됐거나 이미 사용됐습니다. 새 메일을 요청하세요"
+RESET_ACCEPTED = "가입된 주소라면 비밀번호 재설정 메일을 보냈습니다. 메일함(스팸함 포함)을 확인하세요"
+
+
+def _issue(session: Session, user: User, purpose: str, ttl: timedelta) -> str:
+    """새 토큰을 만들고, 같은 용도의 쓰지 않은 이전 토큰은 무효로 한다."""
+    for old in session.scalars(select(EmailToken).where(
+            EmailToken.user_id == user.id, EmailToken.purpose == purpose, EmailToken.used_at.is_(None))):
+        old.used_at = auth.utcnow()
+    token = auth.secrets.token_urlsafe(32)
+    session.add(EmailToken(user_id=user.id, purpose=purpose, token_hash=auth._token_hash(token),
+                           expires_at=auth.utcnow() + ttl))
+    return token
+
+
+def _consume(session: Session, token: str, purpose: str) -> EmailToken | None:
+    row = session.scalar(select(EmailToken).where(
+        EmailToken.token_hash == auth._token_hash(token), EmailToken.purpose == purpose))
+    if row is None or row.used_at is not None or auth._aware(row.expires_at) <= auth.utcnow():
+        return None
+    row.used_at = auth.utcnow()
+    return row
+
+
+def _send_verify(session: Session, user: User, background: BackgroundTasks) -> None:
+    token = _issue(session, user, "verify_email", VERIFY_TTL)
+    link = f"{settings.app_url}/verify-email?token={token}"
+    background.add_task(mailer.deliver, mailer.verify_mail(user.email, user.name, link))
 
 
 def _log(session: Session, user: User, action: str, detail: dict | None = None) -> None:
@@ -65,7 +115,8 @@ def _log(session: Session, user: User, action: str, detail: dict | None = None) 
 
 
 @router.post("/signup", status_code=201)
-def signup(body: SignupIn, request: Request, response: Response, session: Session = Depends(get_session)) -> dict:
+def signup(body: SignupIn, request: Request, response: Response, background: BackgroundTasks,
+           session: Session = Depends(get_session)) -> dict:
     email = body.email.strip().lower()
     if not EMAIL_RE.match(email):
         raise HTTPException(422, "이메일 형식이 올바르지 않습니다")
@@ -86,6 +137,7 @@ def signup(body: SignupIn, request: Request, response: Response, session: Sessio
     session.add(user)
     session.flush()
     _log(session, user, "auth.signup", {"marketing": body.agree_marketing})
+    _send_verify(session, user, background)  # 가입 직후 확인 메일 (안 해도 쓸 수 있음)
     token, expires = auth.start_session(session, user, request.headers.get("user-agent"))
     session.commit()
     auth.set_cookie(response, token, expires)
@@ -199,3 +251,69 @@ def marketing(body: MarketingIn, member: Member = Depends(current_member), sessi
     _log(session, user, "auth.marketing", {"agree": body.agree})
     session.commit()
     return _me(session, user)
+
+
+# ── 이메일 확인 ─────────────────────────────────────────────
+
+@router.post("/verify-email/send", status_code=202)
+def verify_send(background: BackgroundTasks, member: Member = Depends(current_member),
+                session: Session = Depends(get_session)) -> dict:
+    user = session.get(User, member.user_id)
+    if user.email_verified_at is not None:
+        raise HTTPException(409, "이미 확인된 이메일입니다")
+    if not (auth.allow_send(f"verify-min:{user.id}", 1, 60) and auth.allow_send(f"verify-day:{user.id}", 5, 86400)):
+        raise HTTPException(429, "확인 메일을 너무 자주 요청했습니다. 잠시 뒤에 다시 시도하세요")
+    _send_verify(session, user, background)
+    _log(session, user, "auth.verify_email_send")
+    session.commit()
+    return {"sent": True}
+
+
+@router.post("/verify-email")
+def verify_email(body: TokenIn, session: Session = Depends(get_session)) -> dict:
+    """메일 링크로 들어온 확인. 로그인하지 않아도 된다 (다른 기기에서 메일을 열 수 있으므로)."""
+    row = _consume(session, body.token, "verify_email")
+    if row is None:
+        raise HTTPException(400, BAD_LINK)
+    user = session.get(User, row.user_id)
+    user.email_verified_at = user.email_verified_at or auth.utcnow()
+    _log(session, user, "auth.verify_email")
+    session.commit()
+    return {"verified": True}
+
+
+# ── 비밀번호 재설정 ─────────────────────────────────────────
+
+@router.post("/password-reset/request", status_code=202)
+def reset_request(body: ResetRequestIn, background: BackgroundTasks, session: Session = Depends(get_session)) -> dict:
+    """가입 여부와 관계없이 같은 응답 (가입된 주소인지 알아낼 수 없게)."""
+    email = body.email.strip().lower()
+    user = session.scalar(select(User).where(func.lower(User.email) == email))
+    if user and user.is_active and auth.allow_send(f"reset:{email}", 3, 3600):
+        token = _issue(session, user, "reset_password", RESET_TTL)
+        background.add_task(mailer.deliver, mailer.reset_mail(user.email, user.name,
+                                                              f"{settings.app_url}/reset-password?token={token}"))
+        _log(session, user, "auth.password_reset_request")
+        session.commit()
+    return {"message": RESET_ACCEPTED}
+
+
+@router.post("/password-reset/confirm")
+def reset_confirm(body: ResetConfirmIn, session: Session = Depends(get_session)) -> dict:
+    row = session.scalar(select(EmailToken).where(
+        EmailToken.token_hash == auth._token_hash(body.token), EmailToken.purpose == "reset_password"))
+    if row is None or row.used_at is not None or auth._aware(row.expires_at) <= auth.utcnow():
+        raise HTTPException(400, BAD_LINK)
+    user = session.get(User, row.user_id)
+    if not user.is_active:
+        raise HTTPException(400, BAD_LINK)
+    if (problem := auth.password_problem(body.new_password, user.email or "")):
+        raise HTTPException(422, problem)  # 토큰은 아직 쓰지 않음 → 다시 입력 가능
+    row.used_at = auth.utcnow()
+    user.password_hash = auth.hash_password(body.new_password)
+    user.email_verified_at = user.email_verified_at or auth.utcnow()  # 메일을 받았으니 주소 확인도 된 셈
+    n = auth.revoke_all(session, user.id)  # 모든 기기 로그아웃 (2단계 인증은 그대로)
+    auth.clear_fails(auth.throttle_key(user.email or ""))
+    _log(session, user, "auth.password_reset", {"sessions_revoked": n})
+    session.commit()
+    return {"reset": True}

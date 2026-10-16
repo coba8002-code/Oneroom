@@ -67,9 +67,10 @@ function LoginForm() {
       <button type="submit" className="btn-primary w-full py-3" disabled={busy}>
         {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="h-5 w-5" />} {needOtp ? "확인" : "로그인"}
       </button>
-      <p className="text-center text-sm text-slate-500">
-        처음이신가요? <a href="/signup" className="font-semibold text-blue-600 hover:underline">회원가입</a>
-      </p>
+      <div className="flex justify-between text-sm text-slate-500">
+        <a href="/forgot-password" className="hover:text-slate-700 hover:underline">비밀번호를 잊으셨나요?</a>
+        <span>처음이신가요? <a href="/signup" className="font-semibold text-blue-600 hover:underline">회원가입</a></span>
+      </div>
     </form>
   );
 }

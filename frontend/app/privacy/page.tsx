@@ -20,6 +20,7 @@ export default function Privacy() {
         <table><thead><tr><th>수탁자</th><th>위탁 업무</th></tr></thead><tbody>
           <tr><td>네이버클라우드㈜ (CLOVA OCR)</td><td>계약서 이미지의 글자 인식 (회원이 계약서를 올리고 OCR이 켜져 있을 때)</td></tr>
           <tr><td>(호스팅 사업자 — 확정 후 기재)</td><td>서버·데이터베이스 운영</td></tr>
+          <tr><td>(메일 발송 업체 — 확정 후 기재)</td><td>이메일 주소 확인·비밀번호 재설정 메일 발송</td></tr>
         </tbody></table>
         <p className="mt-2 text-sm text-slate-500">국외 이전: 없음 (수탁자 처리 지역 확인 후 확정).</p></section>
       <section><h2>4. 안전성 확보 조치</h2>

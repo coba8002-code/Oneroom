@@ -336,7 +336,10 @@ function AccountCard() {
       <CardHead icon={UserRound} title="내 계정" sub="로그인 정보와 수신 동의" />
       <dl className="grid grid-cols-[6rem_1fr] gap-y-2 text-sm">
         <dt className="text-slate-500">이름</dt><dd>{me.user.name}</dd>
-        <dt className="text-slate-500">이메일</dt><dd>{me.user.email}</dd>
+        <dt className="text-slate-500">이메일</dt>
+        <dd className="flex flex-wrap items-center gap-2"><span className="break-all">{me.user.email}</span>
+          <span className={`chip ${me.user.email_verified ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
+            {me.user.email_verified ? "확인됨" : "확인 전"}</span></dd>
         <dt className="text-slate-500">사업장</dt><dd>{me.organization.name}</dd>
         <dt className="text-slate-500">권한</dt><dd>{ {owner: "대표 (전체)", manager: "관리자 (입력·수정)", viewer: "조회만"}[me.user.role] }</dd>
       </dl>

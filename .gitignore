@@ -10,3 +10,4 @@ next-env.d.ts
 uploads/
 *.tsbuildinfo
 backups/
+mail_outbox/

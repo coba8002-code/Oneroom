@@ -146,6 +146,22 @@ def clear_fails(key: str) -> None:
     _fails.pop(key, None)
 
 
+# ── 메일 발송 횟수 제한 (같은 주소로 메일 폭탄 방지) ──
+
+_sends: dict[str, deque] = defaultdict(deque)
+
+
+def allow_send(key: str, limit: int, window: int) -> bool:
+    q = _sends[key]
+    now = time.monotonic()
+    while q and now - q[0] > window:
+        q.popleft()
+    if len(q) >= limit:
+        return False
+    q.append(now)
+    return True
+
+
 # ── TOTP ────────────────────────────────────────────────────
 
 def new_totp_secret() -> str:

@@ -19,6 +19,17 @@ class Settings:
     # 운영(HTTPS)에서는 반드시 true — 세션 쿠키를 HTTPS 로만 보냄
     cookie_secure: bool = os.getenv("ROOMAX_COOKIE_SECURE", "false").lower() == "true"
     session_days: int = int(os.getenv("ROOMAX_SESSION_DAYS", "14"))
+    # 메일 속 링크가 가리킬 화면 주소
+    app_url: str = os.getenv("ROOMAX_APP_URL", "http://localhost:3000").rstrip("/")
+    # 메일 발송: file(개발 — mail_outbox 폴더에 .eml 로 저장) | smtp(운영)
+    mail_mode: str = os.getenv("ROOMAX_MAIL_MODE", "file")
+    mail_outbox_dir: str = os.getenv("ROOMAX_MAIL_OUTBOX_DIR", "mail_outbox")
+    mail_from: str = os.getenv("ROOMAX_MAIL_FROM", "ROOMAX <no-reply@localhost>")
+    smtp_host: str = os.getenv("ROOMAX_SMTP_HOST", "")
+    smtp_port: int = int(os.getenv("ROOMAX_SMTP_PORT", "587"))
+    smtp_user: str = os.getenv("ROOMAX_SMTP_USER", "")
+    smtp_password: str = os.getenv("ROOMAX_SMTP_PASSWORD", "")
+    smtp_starttls: bool = os.getenv("ROOMAX_SMTP_STARTTLS", "true").lower() == "true"
     cors_origins: tuple[str, ...] = tuple(
         o for o in os.getenv("ROOMAX_CORS_ORIGINS", "http://localhost:3000").split(",") if o
     )

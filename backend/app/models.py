@@ -70,6 +70,19 @@ class User(Base):
     privacy_agreed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     marketing_agreed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at()
+
+
+class EmailToken(Base):
+    """이메일 인증·비밀번호 재설정 링크. 링크에는 무작위 토큰, DB 에는 해시만. 한 번 쓰면 끝."""
+    __tablename__ = "email_tokens"
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    purpose: Mapped[str] = mapped_column(String(20))  # verify_email | reset_password
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
 
 

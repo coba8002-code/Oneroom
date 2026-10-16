@@ -62,7 +62,7 @@ async function errorText(res: Response): Promise<string> {
   return `요청 실패 (${res.status})`;
 }
 
-export const AUTH_PAGES = ["/login", "/signup", "/terms", "/privacy"];
+export const AUTH_PAGES = ["/login", "/signup", "/terms", "/privacy", "/forgot-password", "/reset-password", "/verify-email"];
 
 /** 로그인 쿠키를 함께 보내는 fetch. 401 이면 로그인 화면으로 보낸다 (가입·로그인 화면 제외). */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -327,7 +327,7 @@ export interface DocumentDetail {
 
 export interface Me {
   user: { id: string; email: string; name: string | null; role: "owner" | "manager" | "viewer"; mfa_enabled: boolean;
-    marketing_agreed: boolean };
+    email_verified: boolean; marketing_agreed: boolean };
   organization: { id: string; name: string };
 }
 

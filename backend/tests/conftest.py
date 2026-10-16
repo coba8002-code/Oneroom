@@ -45,8 +45,19 @@ PASSWORD = "test-password-123"
 def _reset_login_throttle():
     from app import auth
     auth._fails.clear()
+    auth._sends.clear()
     yield
     auth._fails.clear()
+    auth._sends.clear()
+
+
+@pytest.fixture(autouse=True)
+def mailbox(monkeypatch):
+    """모든 테스트에서 메일은 메모리로만 (파일·SMTP 안 씀). 보낸 메일은 mailbox.sent."""
+    from app.services import mailer
+    box = mailer.MemoryMailer()
+    monkeypatch.setattr(mailer, "get_mailer", lambda: box)
+    return box
 
 
 @pytest.fixture

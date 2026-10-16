@@ -110,6 +110,11 @@ npm run dev                     # http://localhost:3000/onboarding
 - **모든 업무 API 는 로그인 필요**, 남의 사업장 데이터는 404 (테스트가 모든 경로를 훑어 검사)
 - **역할**: owner(전체) · manager(입력·수정) · viewer(조회만). 백업·복구는 owner 만
 - **2단계 인증(MFA)**: 인증 앱 TOTP, 설정에서 켜기
+- **이메일 확인 · 비밀번호 재설정**: 가입 직후 확인 메일(24시간), `/forgot-password` 에서 재설정 메일(1시간). 링크는 한 번만,
+  DB 에는 토큰 해시만. 재설정 요청은 가입 여부와 관계없이 같은 응답, 주소당 시간당 3통. 재설정하면 모든 기기 로그아웃
+  (2단계 인증은 유지). 미확인 계정도 이용 가능, 화면 위에 안내 배너
+- **메일 발송 설정**: 개발은 `ROOMAX_MAIL_MODE=file` (보내지 않고 `mail_outbox/` 에 .eml 저장), 운영은 `smtp` +
+  `ROOMAX_SMTP_HOST/PORT/USER/PASSWORD`, `ROOMAX_MAIL_FROM`, 링크 주소 `ROOMAX_APP_URL`. 업체를 정하면 처리방침 '처리 위탁'에 기재
 - 운영(HTTPS)에서는 `ROOMAX_COOKIE_SECURE=true`, 화면과 API 를 같은 도메인(리버스 프록시)으로 두는 것을 권장
 
 ## 백업 · 복구 (`/settings`)

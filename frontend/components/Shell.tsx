@@ -3,6 +3,7 @@
 import {
   Bell,
   LogOut,
+  MailWarning,
   Building2,
   Calculator,
   FileBarChart,
@@ -115,6 +116,32 @@ function UserBox({ me, dark = true }: { me: Me; dark?: boolean }) {
   );
 }
 
+/** 이메일 미확인 안내. 쓰는 데 제한은 없지만, 확인해야 비밀번호를 잊었을 때 되찾을 수 있다. */
+function VerifyBanner({ email }: { email: string }) {
+  const [state, setState] = useState<"idle" | "busy" | "sent" | "error">("idle");
+  const [msg, setMsg] = useState("");
+  async function resend() {
+    setState("busy");
+    const res = await fetch(`${API_BASE}/api/v1/auth/verify-email/send`, { method: "POST", credentials: "include" }).catch(() => null);
+    if (res?.ok) { setState("sent"); return; }
+    setState("error");
+    setMsg(res ? (await res.json().catch(() => ({}))).detail ?? "보내지 못했습니다" : "서버에 연결할 수 없습니다");
+  }
+  return (
+    <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950" role="status">
+      <MailWarning className="h-5 w-5 shrink-0 text-amber-600" />
+      <span className="min-w-0 flex-1">
+        이메일 주소 확인이 아직입니다. <b className="break-all">{email}</b> 로 보낸 메일의 링크를 눌러 주세요.
+        <span className="block text-xs text-amber-800">확인해 두어야 비밀번호를 잊었을 때 되찾을 수 있습니다.</span>
+      </span>
+      {state === "sent" ? <span className="text-xs font-semibold text-emerald-700">새 확인 메일을 보냈습니다</span> : (
+        <button type="button" className="btn-secondary btn-sm whitespace-nowrap" disabled={state === "busy"} onClick={resend}>확인 메일 다시 보내기</button>
+      )}
+      {state === "error" && <span className="w-full text-xs text-red-700">{msg}</span>}
+    </div>
+  );
+}
+
 function SidebarCard() {
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-100 via-blue-50 to-indigo-100 p-4 text-navy-900">
@@ -185,7 +212,10 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       )}
 
       <main className="min-w-0 flex-1 px-4 pb-24 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
-        <div className="mx-auto max-w-[1400px]">{children}</div>
+        <div className="mx-auto max-w-[1400px]">
+          {!me.user.email_verified && <VerifyBanner email={me.user.email} />}
+          {children}
+        </div>
       </main>
 
       {/* 모바일 하단 탭 */}
