@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Charge, Deposit, Lease, Payment, Property, Tenant, Transaction, TransactionAllocation, Unit
-from app.services import ledger, receivables, reports, tax_calendar
+from app.services import backup, ledger, receivables, reports, tax_calendar
 from app.services.charges import due_date_for
 from app.services.expenses import kst_date
 from app.services.matching import org_transactions
@@ -57,6 +57,7 @@ def _recent(session: Session, organization_id, unit_by_lease: dict) -> list[dict
 STALE_BANK_DAYS = 7
 LEASE_END_WINDOW = 60
 DUE_SOON_DAYS = 7
+BACKUP_REMIND_DAYS = 30
 
 
 def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
@@ -163,6 +164,11 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
         when = f"{e['days_left']}일 후 만료" if e["days_left"] >= 0 else f"만료 {-e['days_left']}일 지남"
         dep = f", 보증금 {e['deposit_to_return']:,}원 반환 예정" if e["deposit_to_return"] else ""
         add("info", "lease_ending", f"{e['unit_no']} 계약 {when}{dep}.", "/expenses")
+    last_backup = backup.last_backup_at(session, organization_id)
+    if last_backup is None:
+        add("info", "backup_none", "아직 백업한 적이 없습니다. 설정에서 백업 파일을 내려받아 두세요.", "/settings")
+    elif (age := (as_of - kst_date(last_backup)).days) > BACKUP_REMIND_DAYS:
+        add("info", "backup_old", f"마지막 백업이 {age}일 전입니다.", "/settings")
     if counts["vacant"]:
         vac = ", ".join(u.unit_no for u in units if u.status == "vacant")
         add("info", "vacant", f"공실 {counts['vacant']}실 ({vac}).", "/onboarding")

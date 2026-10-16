@@ -40,6 +40,9 @@
 | API 경로 | `/api/v1/kebab-case` |
 
 마이그레이션은 Alembic으로만. 수동 DDL 금지.
+**마이그레이션을 추가하면** `backend/app/services/backup.py` 의 `SCHEMA_REVISION` 을 올리고,
+**새 테이블을 만들면** 같은 파일의 `ORG_COLUMN` 또는 `CHILDREN` 에 넣으십시오 (`tests/test_backup.py` 가 검사).
+빠뜨리면 그 테이블은 백업에서 조용히 빠집니다.
 
 ## 확정된 정책
 

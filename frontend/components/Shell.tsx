@@ -33,7 +33,7 @@ const NAV: NavItem[] = [
   { href: null, label: "세무 관리", icon: Landmark },
   { href: null, label: "전월세 시뮬레이션", icon: Calculator },
   { href: null, label: "보고서", icon: FileBarChart },
-  { href: null, label: "설정", icon: Settings },
+  { href: "/settings", label: "설정", icon: Settings },
 ];
 
 const TABS: NavItem[] = [
