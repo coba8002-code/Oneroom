@@ -261,8 +261,12 @@ def cancel(session: Session, organization_id: uuid.UUID, allocation_id: uuid.UUI
         raise MatchError("출금 거래는 운영비 화면에서 취소하세요")
     ledger.unapply(session, alloc)
     if alloc.category == "deposit_in":
+        # 보증금은 묶음별(최초분·증액분)로 기록 — 이 입금이 채운 묶음만 되돌린다
+        txn = session.get(Transaction, alloc.transaction_id)
+        occurred = txn.occurred_at if txn.occurred_at.tzinfo else txn.occurred_at.replace(tzinfo=timezone.utc)
         dep = session.scalar(select(Deposit).where(
-            Deposit.lease_id == alloc.lease_id, Deposit.received_at.is_not(None)).limit(1))
+            Deposit.lease_id == alloc.lease_id, Deposit.received_at == occurred.astimezone(KST).date(),
+            Deposit.amount == alloc.amount).order_by(Deposit.created_at.desc()).limit(1))
         if dep:
             dep.received_at = None
     alloc.review_status = "rejected"

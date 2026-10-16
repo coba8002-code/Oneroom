@@ -111,6 +111,26 @@ def lease_values(lease: Lease) -> dict:
             "start_date": lease.start_date.isoformat(), "end_date": lease.end_date.isoformat() if lease.end_date else None}
 
 
+def _set_deposit(session: Session, lease: Lease, deposit: int) -> None:
+    """계약 보증금을 바꾼다. 보증금은 받은 묶음별로 기록 — 이미 받은 금액은 그대로 두고,
+    차액만 '받을 보증금'(미수령 묶음)으로 둔다. 증액분 입금은 임대료 화면에서 '보증금 수령'으로 확정."""
+    tranches = session.scalars(select(Deposit).where(Deposit.lease_id == lease.id)).all()
+    if any(d.returned_at is not None for d in tranches):
+        raise MatchError("보증금을 이미 돌려준 계약입니다. 새 계약은 새로 등록하세요")
+    received = sum(d.amount for d in tranches if d.received_at is not None)
+    if deposit < received:
+        raise MatchError(f"이미 받은 보증금 {received:,}원보다 적게 바꿀 수 없습니다. "
+                         "감액(일부 반환)은 운영비 화면에서 반환 출금을 '보증금 반환'으로 확정하세요")
+    pending = next((d for d in tranches if d.received_at is None), None)
+    rest = deposit - received
+    if pending and rest:
+        pending.amount = rest
+    elif pending:
+        session.delete(pending)
+    elif rest:
+        session.add(Deposit(lease_id=lease.id, amount=rest))
+
+
 def verify(session: Session, organization_id: uuid.UUID, doc_id: uuid.UUID, *, deposit: int, rent: int,
            due_day: int, start_date: date, end_date: date | None) -> LeaseDocument:
     """관리자가 확정한 값을 원장에 반영한다. 이미 생성된 청구는 바꾸지 않는다 (다음 청구부터)."""
@@ -125,14 +145,7 @@ def verify(session: Session, organization_id: uuid.UUID, doc_id: uuid.UUID, *, d
     before = lease_values(lease)
 
     if deposit != lease.deposit:
-        dep = session.scalar(select(Deposit).where(Deposit.lease_id == lease.id).limit(1))
-        if dep and dep.received_at is not None:
-            raise MatchError(f"보증금을 이미 {dep.amount:,}원 받은 기록이 있습니다. 증액·감액은 실제 입출금으로 "
-                             "처리하고, 여기서는 기존 금액으로 검수하세요")
-        if dep:
-            dep.amount = deposit
-        elif deposit > 0:
-            session.add(Deposit(lease_id=lease.id, amount=deposit))
+        _set_deposit(session, lease, deposit)
     lease.deposit, lease.rent, lease.due_day = deposit, rent, due_day
     lease.start_date, lease.end_date = start_date, end_date
 

@@ -5,7 +5,7 @@ import uuid
 from datetime import date, timedelta
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.models import Charge, Deposit, Lease, Payment, Property, Tenant, Transaction, TransactionAllocation, Unit
 from app.services import backup, ledger, receivables, reports, tax_calendar
@@ -114,19 +114,22 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
         if lease.end_date is None:
             continue
         days_left = (lease.end_date - as_of).days
-        unreturned = session.scalar(select(Deposit).where(  # 받았고 아직 안 돌려준 것만
+        unreturned = session.scalar(select(func.sum(Deposit.amount)).where(  # 받았고 아직 안 돌려준 것 (최초분+증액분)
             Deposit.lease_id == lease.id, Deposit.received_at.is_not(None),
-            Deposit.returned_at.is_(None)).limit(1))
+            Deposit.returned_at.is_(None)))
         if days_left <= LEASE_END_WINDOW and (days_left >= 0 or unreturned):
             lease_endings.append({
                 "unit_no": next(u.unit_no for u in units if u.id == lease.unit_id),
                 "tenant_name": name, "end_date": lease.end_date, "days_left": days_left,
-                "deposit_to_return": unreturned.amount if unreturned else None,
+                "deposit_to_return": int(unreturned) if unreturned else None,
             })
     lease_endings.sort(key=lambda x: x["end_date"])
 
+    got = aliased(Deposit)
     deposits_unreceived = session.execute(
-        select(Unit.unit_no, Deposit.amount)
+        select(Unit.unit_no, Deposit.amount,
+               select(got.id).where(got.lease_id == Lease.id, got.received_at.is_not(None))
+               .correlate(Lease).exists())  # 이미 받은 묶음이 있으면 이건 증액분
         .join(Lease, Deposit.lease_id == Lease.id).join(Unit, Lease.unit_id == Unit.id)
         .where(Lease.id.in_([lease.id for lease, _ in leases.values()]),
                Deposit.received_at.is_(None), Deposit.amount > 0)
@@ -158,8 +161,9 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
         units_txt = ", ".join(sorted({i.unit_no for i in overdue}))
         add("info", "overdue", f"납부일이 지난 미수 {len(overdue)}건 ({units_txt}). 연락은 내역 확인 후 직접 판단하세요.",
             "/payments")
-    for unit_no, amount in deposits_unreceived:
-        add("info", "deposit_unreceived", f"{unit_no} 보증금 {amount:,}원 수령 기록 없음.", "/payments")
+    for unit_no, amount, increase in deposits_unreceived:
+        what = "보증금 증액분" if increase else "보증금"
+        add("info", "deposit_unreceived", f"{unit_no} {what} {amount:,}원 수령 기록 없음.", "/payments")
     for e in lease_endings:
         when = f"{e['days_left']}일 후 만료" if e["days_left"] >= 0 else f"만료 {-e['days_left']}일 지남"
         dep = f", 보증금 {e['deposit_to_return']:,}원 반환 예정" if e["deposit_to_return"] else ""

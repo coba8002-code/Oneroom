@@ -379,7 +379,8 @@ function Review({ orgId, doc, onDoc, onDone }: {
 
         <ul className="space-y-1 text-xs text-slate-500">
           <li>· 월세·납부일을 바꾸면 <b>다음에 만드는 청구부터</b> 적용됩니다. 이미 만든 청구는 그대로입니다.</li>
-          <li>· 이미 받은 보증금은 여기서 바꿀 수 없습니다. 증액·반환은 실제 입출금으로 처리하세요.</li>
+          <li>· 보증금을 올리면(증액) 차액이 &lsquo;받을 보증금&rsquo;으로 등록됩니다. 그 입금은 임대료 관리에서 &lsquo;보증금 수령&rsquo;으로 확정하세요.</li>
+          <li>· 이미 받은 금액보다 낮출 수는 없습니다. 일부를 돌려줬다면 지출·운영비에서 반환 출금을 &lsquo;보증금 반환&rsquo;으로 확정하세요.</li>
         </ul>
 
         {doc.ocr_text && (

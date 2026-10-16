@@ -1,5 +1,6 @@
 """계약서 OCR — PRD §8: 계약 OCR 결과는 관리자 승인 전 원장에 확정되지 않음."""
 import json
+import uuid
 from pathlib import Path
 
 import httpx
@@ -164,12 +165,83 @@ def test_verify_applies_to_ledger_and_only_future_charges(client, lease101, sess
     assert again.status_code == 409
 
 
-def test_received_deposit_cannot_be_changed_by_document(client, lease101):
-    org, c = lease101  # 샘플은 보증금 수령일이 있음
-    doc = _upload(client, org, c["lease_id"]).json()
-    res = client.post(f"/api/v1/documents/{doc['id']}/verify", params={"organization_id": org}, json={
-        "deposit": 7_000_000, "rent": 450_000, "due_day": 1, "start_date": "2025-03-01", "end_date": "2027-02-28"})
-    assert res.status_code == 409 and "이미" in res.json()["detail"]
+def _verify(client, org, lease_id, deposit, doc=None, **kw):
+    doc = doc or _upload(client, org, lease_id, PNG + str(deposit).encode()).json()  # 같은 파일은 다시 못 올림
+    body = {"deposit": deposit, "rent": 480_000, "due_day": 25, "start_date": "2025-11-25", "end_date": "2027-11-24", **kw}
+    return client.post(f"/api/v1/documents/{doc['id']}/verify", params={"organization_id": org}, json=body)
+
+
+def test_deposit_increase_becomes_receivable_then_matched_and_returned(client, onboarded, session):
+    """보증금 증액(A안): 계약서 검수로 올리면 차액이 '받을 보증금' → 입금은 보증금 수령(부채) → 반환은 합계로."""
+    org = onboarded["organization_id"]
+    p = {"organization_id": org}
+    c301 = next(c for c in client.get("/api/v1/contracts", params=p).json() if c["unit_no"] == "301")
+    lid = c301["lease_id"]  # 샘플: 보증금 3,000,000 이미 수령
+    luid = uuid.UUID(lid)
+
+    doc = _upload(client, org, lid).json()
+    res = _verify(client, org, lid, 2_000_000, doc)  # 받은 것보다 적게는 안 됨 (감액 = 반환 출금)
+    assert res.status_code == 409 and "보증금 반환" in res.json()["detail"]
+    assert _verify(client, org, lid, 6_000_000, doc).status_code == 200  # 거부된 검수는 문서를 소모하지 않음
+    deps = session.scalars(select(Deposit).where(Deposit.lease_id == luid).order_by(Deposit.created_at)).all()
+    assert [(d.amount, d.received_at is not None) for d in deps] == [(3_000_000, True), (3_000_000, False)]
+    d = client.get("/api/v1/dashboard", params={**p, "as_of": "2026-11-12"}).json()
+    assert any("301 보증금 증액분 3,000,000원" in a["message"] for a in d["attention"])
+
+    # 샘플 은행 내역의 '보증금 증액분' 3,000,000 입금 → 보증금 수령 제안 → 확정
+    from tests.conftest import SAMPLES
+    client.post("/api/v1/charges/generate", params={**p, "period": "2026-11"})
+    client.post(f"/api/v1/bank-accounts/{onboarded['bank_account_id']}/import", params=p,
+                files={"file": ("s.csv", (SAMPLES / "bank_transactions_sample.csv").read_bytes())})
+    client.post("/api/v1/matching/run", params=p)
+    item = next(q for q in client.get("/api/v1/matching/queue", params=p).json()
+                if q["transaction"]["counterparty"] == "임차인F")
+    assert item["suggestion"]["category"] == "deposit_in" and item["suggestion"]["lease_id"] == lid
+    res = client.post(f"/api/v1/transactions/{item['transaction']['id']}/decision", params=p,
+                      json={"lease_id": lid, "category": "deposit_in", "remember_alias": False})
+    assert res.status_code == 200, res.text
+    report = client.get("/api/v1/reports/monthly", params={**p, "period": "2026-11"}).json()
+    assert report["excluded"]["deposit_in"] == 3_000_000  # 매출(월세 입금)에 안 들어감
+    assert report["rent_received"] == 2_260_000
+
+    # 확정 취소 → 증액분만 미수령으로 돌아가고 최초분은 그대로
+    from app.models import TransactionAllocation
+    alloc = session.scalar(select(TransactionAllocation).where(
+        TransactionAllocation.category == "deposit_in", TransactionAllocation.review_status == "approved"))
+    assert client.post(f"/api/v1/allocations/{alloc.id}/cancel", params=p).status_code in (200, 204)
+    session.expire_all()
+    assert sorted((d.amount, d.received_at is not None) for d in
+                  session.scalars(select(Deposit).where(Deposit.lease_id == luid))) == [(3_000_000, False), (3_000_000, True)]
+    item = next(q for q in client.get("/api/v1/matching/queue", params=p).json()
+                if q["transaction"]["counterparty"] == "임차인F")
+    client.post(f"/api/v1/transactions/{item['transaction']['id']}/decision", params=p,
+                json={"lease_id": lid, "category": "deposit_in", "remember_alias": False})
+
+    # 만기 반환 6,000,000 (최초분 + 증액분 합계) → 반환 제안 → 둘 다 반환 처리, 취소하면 둘 다 되돌림
+    client.post(f"/api/v1/bank-accounts/{onboarded['bank_account_id']}/import", params=p,
+                files={"file": ("r.csv", "거래일시,적요,입금자,출금,입금\n2026-11-30 17:00,이체,임차인F,6000000,\n".encode())})
+    client.post("/api/v1/expenses/classify", params=p)
+    out = next(q for q in client.get("/api/v1/expenses/queue", params=p).json()
+               if q["transaction"]["counterparty"] == "임차인F")
+    assert out["suggestion"]["category"] == "deposit_out" and out["suggestion"]["lease_id"] == lid
+    assert client.post(f"/api/v1/transactions/{out['transaction']['id']}/expense-decision", params=p, json={
+        "splits": [{"category": "deposit_out", "amount": 6_000_000}], "lease_id": lid}).status_code == 200
+    session.expire_all()
+    assert all(d.returned_at is not None for d in session.scalars(select(Deposit).where(Deposit.lease_id == luid)))
+    assert client.post(f"/api/v1/transactions/{out["transaction"]["id"]}/expense-cancel", params=p).status_code in (200, 204)
+    session.expire_all()
+    assert all(d.returned_at is None for d in session.scalars(select(Deposit).where(Deposit.lease_id == luid)))
+
+
+def test_deposit_back_to_received_amount_drops_receivable(client, onboarded, session):
+    org = onboarded["organization_id"]
+    lid = next(c for c in client.get("/api/v1/contracts", params={"organization_id": org}).json()
+               if c["unit_no"] == "301")["lease_id"]
+    luid = uuid.UUID(lid)
+    _verify(client, org, lid, 6_000_000)
+    assert _verify(client, org, lid, 3_000_000).status_code == 200  # 증액 취소 → 받을 보증금 없음
+    deps = session.scalars(select(Deposit).where(Deposit.lease_id == luid)).all()
+    assert [(d.amount, d.received_at is not None) for d in deps] == [(3_000_000, True)]
 
 
 def test_unreceived_deposit_updated(client, session):

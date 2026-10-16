@@ -102,18 +102,18 @@ def _org_leases(session: Session, organization_id: uuid.UUID) -> list[tuple[Leas
     ).all()
 
 
-def _unreturned_deposit(session: Session, lease_id: uuid.UUID) -> Deposit | None:
-    return session.scalar(select(Deposit).where(
-        Deposit.lease_id == lease_id, Deposit.received_at.is_not(None), Deposit.returned_at.is_(None)
-    ).limit(1))
+def _unreturned_deposits(session: Session, lease_id: uuid.UUID) -> list[Deposit]:
+    """받았고 아직 돌려주지 않은 보증금 묶음들 (최초분 + 증액분). 반환은 합계로 한 번에."""
+    return list(session.scalars(select(Deposit).where(
+        Deposit.lease_id == lease_id, Deposit.received_at.is_not(None), Deposit.returned_at.is_(None))))
 
 
 def _suggest(session: Session, txn: Transaction, leases) -> tuple[uuid.UUID | None, str, float, str]:
     payee = normalize_name(txn.counterparty)
     for lease, unit_no, name in leases:
         if payee and normalize_name(name) == payee:
-            dep = _unreturned_deposit(session, lease.id)
-            if dep and dep.amount == txn.amount:
+            deps = _unreturned_deposits(session, lease.id)
+            if deps and sum(d.amount for d in deps) == txn.amount:
                 return lease.id, "deposit_out", 0.8, f"받는 분 = {unit_no} 임차인, 금액 = 보증금 → 보증금 반환?"
     text = f"{txn.counterparty or ''} {txn.description or ''}"
     for words, category, confidence, why in HINTS:
@@ -138,10 +138,11 @@ def _unit_in_org(session: Session, organization_id: uuid.UUID, unit_id: uuid.UUI
 def _record(session: Session, organization_id: uuid.UUID, txn: Transaction,
             alloc: TransactionAllocation, unit_id: uuid.UUID | None) -> None:
     if alloc.category == "deposit_out":
-        dep = _unreturned_deposit(session, alloc.lease_id)
-        if dep is None:
+        deps = _unreturned_deposits(session, alloc.lease_id)
+        if not deps:
             raise MatchError("이 계약에는 돌려줄 보증금이 없습니다 (미수령 또는 이미 반환)")
-        dep.returned_at = kst_date(txn.occurred_at)
+        for dep in deps:
+            dep.returned_at = kst_date(txn.occurred_at)
         return
     session.add(Expense(
         organization_id=organization_id,
@@ -282,9 +283,8 @@ def cancel(session: Session, organization_id: uuid.UUID, txn_id: uuid.UUID) -> N
         for e in session.scalars(select(Expense).where(Expense.transaction_allocation_id == a.id)):
             session.delete(e)
         if a.category == "deposit_out":
-            dep = session.scalar(select(Deposit).where(
-                Deposit.lease_id == a.lease_id, Deposit.returned_at.is_not(None)).limit(1))
-            if dep:
+            for dep in session.scalars(select(Deposit).where(
+                    Deposit.lease_id == a.lease_id, Deposit.returned_at == kst_date(txn.occurred_at))):
                 dep.returned_at = None
         a.review_status = "rejected"
     session.add(AuditLog(action="expense.cancel", entity_type="transaction", entity_id=str(txn.id),
