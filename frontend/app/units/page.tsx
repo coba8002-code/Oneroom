@@ -1,6 +1,6 @@
 "use client";
 
-import { Calculator, ClipboardList, DoorOpen, Link2, LogOut, Plus, Undo2 } from "lucide-react";
+import { Calculator, ClipboardList, DoorOpen, FileCheck2, Link2, LogOut, Plus, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, todayKst, won } from "@/lib/api";
@@ -81,6 +81,8 @@ export default function UnitsPage() {
                           <span className={`chip ${l.status === "active" ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}>
                             {l.status === "active" ? "진행 중" : `종료 ${l.ended_on ?? ""}`}</span>
                           {l.deposit_unreturned > 0 && l.status === "ended" && <span className="chip bg-red-50 text-red-700">보증금 {won(l.deposit_unreturned)} 미반환</span>}
+                          {l.status !== "draft" && <Link href={`/certificate?lease=${l.lease_id}`} className="ml-auto inline-flex items-center gap-1 text-xs text-blue-700 hover:underline">
+                            <FileCheck2 className="h-3.5 w-3.5" />납부 확인서</Link>}
                         </div>
                         <p className="mt-0.5 text-xs text-slate-600">{l.start_date} ~ {l.end_date ?? "—"} · 보증금 {won(l.deposit)} · 월세 {won(l.rent)}
                           {l.end_reason ? ` · ${l.end_reason}` : ""}</p>

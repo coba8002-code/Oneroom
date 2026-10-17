@@ -94,7 +94,7 @@ test("AI 비서: 키가 없으면 '연결 안 됨' 안내만, 질문 칸은 잠�
 test("휴대폰 폭(390px)에서 주요 화면이 가로로 넘치지 않음", async ({ page }) => {
   await signupAndOnboard(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ["/", "/payments", "/expenses", "/units", "/assets", "/vacancy", "/move-out", "/tax", "/reports", "/settings", "/assistant"]) {
+  for (const path of ["/", "/payments", "/expenses", "/units", "/assets", "/vacancy", "/move-out", "/tax", "/reports", "/settings", "/assistant", "/certificate"]) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     await noOverflow(page);
@@ -197,4 +197,29 @@ test("임차인 링크: 만들기 → 임차인 화면(로그인 없음) → 수
   await expect(tenant.getByText(/링크가 만료되었거나/)).toBeVisible();
   expect(errors, "임차인 화면 오류").toEqual([]);
   await ctx.close();
+});
+
+test("월세 납부 확인서: 확정된 월세 입금만 → 인쇄 화면", async ({ page }) => {
+  const org = await signupAndOnboard(page);
+  await api(page, "POST", `/api/v1/charges/generate?organization_id=${org}&period=2026-09`);
+  await importBank(page, org, sampleBank().replaceAll("2026-11-", "2026-09-"));
+  await api(page, "POST", `/api/v1/matching/run?organization_id=${org}`);
+
+  await page.goto("/units");
+  const unit = page.locator("section.card").filter({ has: page.getByRole("heading", { name: "101호" }) });
+  await unit.getByRole("link", { name: "납부 확인서" }).click();
+  await page.getByLabel("연도 (입금일 기준)").selectOption("2026");
+  const paper = page.locator("article");
+  await expect(paper.getByText("임차인A")).toBeVisible();
+  await expect(paper.locator("tbody tr").filter({ hasText: "2026-09-01" })).toContainText("450,000원");
+  await expect(paper.locator("tfoot")).toContainText("합계 (1건)");
+  await expect(paper).not.toContainText("010-");  // 연락처 없음
+  await expect(page.getByText(/검토 대기 4건은 넣지 않았습니다/)).toBeVisible();  // 화면 경고 (인쇄에는 없음)
+  await page.getByLabel(/임대인 이름/).fill("김대표");
+  await expect(paper.getByText("김대표")).toBeVisible();
+
+  await page.emulateMedia({ media: "print" });
+  await expect(page.getByRole("button", { name: "인쇄·PDF" })).toBeHidden();
+  await expect(page.getByText(/검토 대기 4건/)).toBeHidden();
+  await expect(paper.getByText("월세 납부 확인서")).toBeVisible();
 });
