@@ -27,7 +27,9 @@
 | `ROOMAX_OWNER_EMAIL` | (비움) | **내 이메일을 넣어 두면** 서버를 켠 뒤 남이 먼저 가입해 대표가 되는 일을 막음 — 권장 |
 | `ROOMAX_MAIL_MODE` | `file` | 메일 업체 없이 운영. 비밀번호를 잊으면 서버에서 재설정 링크를 만듦 (아래) |
 
-### 무료 서버 — Oracle Cloud Always Free (서울) 권장
+> **서버 관리 없이** GitHub → Vercel + Supabase 로 올리려면 [vercel-supabase-guide.md](./vercel-supabase-guide.md) (이 문서는 서버 1대 docker 방식)
+
+### 무료 서버 — Oracle Cloud Always Free (서울)
 
 조사일 2026-10-17 기준입니다. 조건은 예고 없이 바뀔 수 있어 가입할 때 한 번 더 확인하세요.
 

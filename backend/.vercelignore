@@ -1,0 +1,11 @@
+.venv
+tests
+.pytest_cache
+__pycache__
+uploads
+backups
+mail_outbox
+alembic
+alembic.ini
+scripts
+Dockerfile

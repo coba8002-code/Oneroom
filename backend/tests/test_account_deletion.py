@@ -108,7 +108,9 @@ def test_mfa_code_required(make_client):
 
 
 def test_safety_backups_removed(make_client, session, monkeypatch, tmp_path):
-    monkeypatch.setattr(backup, "settings", dataclasses.replace(settings, backup_dir=str(tmp_path)))
+    from app.services import blobs
+    monkeypatch.setattr(blobs, "settings", dataclasses.replace(settings, backup_dir=str(tmp_path)))
+    blobs.store.cache_clear()
     a, me = make_client(email="s@example.com")
     org = uuid.UUID(me["organization"]["id"])
     _fill(a, str(org))

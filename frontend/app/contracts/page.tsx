@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, apiFetch, type Contract, type ContractField, type DocumentDetail, won } from "@/lib/api";
 import { useOrg } from "@/lib/useOrg";
+import { shrinkImage } from "@/lib/image";
 
 const FIELD_META: { key: ContractField; label: string; kind: "money" | "day" | "date" }[] = [
   { key: "deposit", label: "보증금", kind: "money" },
@@ -177,8 +178,9 @@ function Register({ orgId, contract, initialDocId, ocrReady, onClose }: {
     if (initialDocId) api<DocumentDetail>(`/api/v1/documents/${initialDocId}?${q}`).then(setDoc).catch((e) => setError(e.message));
   }, [initialDocId, q]);
 
-  async function upload(file: File) {
+  async function upload(picked: File) {
     setBusy(true); setError(null);
+    const file = await shrinkImage(picked);  // 서버리스 한도(약 4.5MB) 안으로
     const fd = new FormData();
     fd.append("file", file);
     try {

@@ -52,6 +52,15 @@ def _reset_login_throttle():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_blob_store():
+    """테스트가 보관 위치 설정을 바꿔도 다음 테스트에 남지 않게."""
+    from app.services import blobs
+    blobs.store.cache_clear()
+    yield
+    blobs.store.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def mailbox(monkeypatch):
     """모든 테스트에서 메일은 메모리로만 (파일·SMTP 안 씀). 보낸 메일은 mailbox.sent."""
     from app.services import mailer

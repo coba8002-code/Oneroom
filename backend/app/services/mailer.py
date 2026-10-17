@@ -76,6 +76,14 @@ def get_mailer():
     return FileMailer()
 
 
+def send_after_response(background, mail: Mail) -> None:
+    """보통은 응답을 먼저 돌려준 뒤 보낸다. 서버리스는 응답 뒤 작업이 실행된다는 보장이 없어 바로 보낸다."""
+    if settings.serverless:
+        deliver(mail)
+    else:
+        background.add_task(deliver, mail)
+
+
 def deliver(mail: Mail) -> None:
     """백그라운드에서 호출. 실패해도 요청은 이미 끝났으므로 기록만 남긴다 (주소는 남기지 않음)."""
     try:

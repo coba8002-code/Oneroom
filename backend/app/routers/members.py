@@ -111,7 +111,7 @@ def invite(body: InviteIn, background: BackgroundTasks, member: Member = Depends
     inviter = session.get(User, member.user_id)
     session.commit()
     link = f"{settings.app_url}/invite?token={token}"
-    background.add_task(mailer.deliver, mailer.invite_mail(email, org.name, inviter.name, ROLE_LABEL[role], link))
+    mailer.send_after_response(background, mailer.invite_mail(email, org.name, inviter.name, ROLE_LABEL[role], link))
     return _invitation_out(inv)
 
 

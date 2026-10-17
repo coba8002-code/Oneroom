@@ -20,7 +20,6 @@ import zipfile
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 from decimal import Decimal
-from pathlib import Path
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -28,9 +27,8 @@ from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from sqlalchemy import Date, DateTime, Numeric, Table, Uuid, delete, func, insert, select
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models import AuditLog, Base, Organization
-from app.services import storage
+from app.services import blobs, storage
 
 MAGIC = b"ROOMAXBK"
 FILE_VERSION = 1
@@ -201,10 +199,9 @@ def filename(manifest: dict, prefix: str = "roomax", full_id: bool = False) -> s
     return f"{prefix}-{org if full_id else org[:8]}-{ts}.roomaxbak"
 
 
-def safety_backups(organization_id: uuid.UUID) -> list[Path]:
-    """복구 직전에 서버에 만든 이 사업장의 안전 백업 파일들."""
-    d = Path(settings.backup_dir)
-    return sorted(d.glob(f"pre-restore-{organization_id}-*.roomaxbak")) if d.exists() else []
+def safety_backups(organization_id: uuid.UUID) -> list[str]:
+    """복구 직전에 서버에 만든 이 사업장의 안전 백업 (backups 보관소의 키)."""
+    return [k for k in blobs.store("backups").list(f"pre-restore-{organization_id}-") if k.endswith(".roomaxbak")]
 
 
 def last_backup_at(session: Session, organization_id: uuid.UUID) -> datetime | None:
@@ -296,10 +293,8 @@ def restore(session: Session, blob: bytes, passphrase: str, target_org_id: uuid.
             raise BackupConflict(f"이 사업장에 이미 데이터가 있습니다. 덮어쓰려면 사업장 이름 "
                                  f"'{target.name}' 을 그대로 입력하세요")
         safety_blob, safety_manifest = build(session, target_org_id, passphrase)
-        backup_dir = Path(settings.backup_dir)
-        backup_dir.mkdir(parents=True, exist_ok=True)
         safety = filename(safety_manifest, "pre-restore", full_id=True)
-        (backup_dir / safety).write_bytes(safety_blob)
+        blobs.store("backups").put(safety, safety_blob)
 
         old_files = {d["file_path"] for d in current["lease_documents"]}
         for table in reversed(Base.metadata.sorted_tables):

@@ -8,6 +8,7 @@
 backend/    FastAPI + SQLAlchemy + Alembic (PostgreSQL)
 frontend/   Next.js + TypeScript + Tailwind
 deploy/     운영 배포 (docker compose + Caddy HTTPS) — deploy/README.md
+            · GitHub → Vercel + Supabase (서버 관리 없음) — deploy/vercel-supabase-guide.md
 samples/    온보딩 CSV · 은행 거래 CSV 샘플 (가상 데이터)
 docs/       PRD
 ```
@@ -169,7 +170,9 @@ npm run dev                     # http://localhost:3000/onboarding
 - `ROOMAX_SIGNUP_MODE=first_only`(배포 기본값): 처음 가입한 한 명만 대표, 이후 가입 화면은 닫히고 멤버는 초대로만.
   `ROOMAX_OWNER_EMAIL` 로 첫 대표 이메일을 고정할 수 있음
 - 메일 업체 없이 운영 가능 — 비밀번호를 잊으면 서버에서 `python -m app.admin_cli reset-link <이메일>` 로 재설정 링크 생성
-- 무료 서버 안내(Oracle Cloud Always Free 서울 + DuckDNS): [deploy/README.md](./deploy/README.md) 0장
+- 무료로 올리는 두 가지
+  - **GitHub → Vercel + Supabase** (서버 관리 없음, main 에 합치면 자동 배포): [deploy/vercel-supabase-guide.md](./deploy/vercel-supabase-guide.md)
+  - Oracle Cloud Always Free 서울 + DuckDNS (서버 1대, docker): [deploy/README.md](./deploy/README.md) 0장
 
 ## 운영 배포 (`deploy/`)
 
@@ -181,6 +184,18 @@ npm run dev                     # http://localhost:3000/onboarding
   메일 링크가 http, 메일이 file 모드(실제로 안 보냄), DB 개발용 비밀번호. 운영에서는 `/docs` 닫힘
 - `GET /api/v1/health` 는 DB 까지 확인 (끊기면 503) — 컨테이너 상태 검사·외부 가동 감시에 사용
 - 정기 백업 파일은 소유자만 읽기(600), 이름은 한국 시각. 해지된 사업장의 백업은 30일 뒤 자동 삭제
+
+## Vercel + Supabase 로 돌릴 때 (`ROOMAX_SERVERLESS`·`VERCEL=1`)
+
+- 파일(계약서 원본·정기 백업·복구 직전 안전 백업)은 **Supabase Storage 비공개 버킷**에 (`ROOMAX_STORAGE=supabase`, 서버 키는 API 에만).
+  서버리스인데 `supabase` 가 아니면 시작하지 않음
+- DB 는 Supabase **Transaction pooler(6543)** — 연결 풀 없이(NullPool) prepared statement 끔. 마이그레이션은 GitHub Actions
+  (`.github/workflows/db-migrate.yml`, Session pooler 5432 를 시크릿으로)
+- Vercel 요청 한도 4.5MB: 계약서 사진은 화면에서 줄여 올리고(`frontend/lib/image.ts`), **백업 파일은 브라우저 ↔ Storage 서명 URL 로
+  직접** 주고받음 (API 를 거치지 않음). 다 쓴 임시 파일은 정기 작업이 하루 뒤 정리
+- 정기 작업: Vercel Cron → `GET /api/v1/internal/cron/daily` (`Authorization: Bearer $CRON_SECRET`, 비밀값이 없으면 404) —
+  DB 조회(일시정지 방지) + `ROOMAX_BACKUP_PASSPHRASE` 가 있으면 사업장별 암호화 백업. Hobby 는 정한 시각의 1시간 안에 실행
+- 메일은 응답 전에 바로 보냄 (서버리스에서는 응답 뒤 작업이 끊길 수 있음)
 
 ## 화면 디자인
 

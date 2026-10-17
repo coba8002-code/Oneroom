@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.crypto
+import app.services.blobs
 import app.services.storage
 from app import backup_cli
 from app.config import settings
@@ -102,6 +103,12 @@ def test_encryption():
 
 # ── 왕복 ──
 
+def _backup_dir(monkeypatch, path):
+    from app.services import blobs
+    monkeypatch.setattr(blobs, "settings", dataclasses.replace(blobs.settings, backup_dir=str(path)))
+    blobs.store.cache_clear()
+
+
 def test_round_trip_to_new_server_with_different_key(rich, session, monkeypatch, tmp_path):
     org_id = uuid.UUID(rich["organization_id"])
     before = _snapshot(session, org_id)
@@ -113,7 +120,8 @@ def test_round_trip_to_new_server_with_different_key(rich, session, monkeypatch,
     # 새 서버: 빈 DB · 다른 암호화 키 · 다른 파일 저장소
     new = dataclasses.replace(settings, field_key=Fernet.generate_key().decode(), upload_dir=str(tmp_path / "up"))
     monkeypatch.setattr(app.crypto, "settings", new)
-    monkeypatch.setattr(app.services.storage, "settings", new)
+    monkeypatch.setattr(app.services.blobs, "settings", new)
+    app.services.blobs.store.cache_clear()
     app.crypto._fernet.cache_clear()
     try:
         engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
@@ -135,14 +143,14 @@ def test_round_trip_to_new_server_with_different_key(rich, session, monkeypatch,
             assert phone.startswith("010-")  # 새 키로 다시 암호화돼 읽힘
             doc = backup.collect(s2, new_org.id)["lease_documents"][0]
             assert storage.load(doc["file_path"]) == PNG
-            assert not list(Path(new.upload_dir).glob(".*.restore"))
+            assert not list(Path(new.upload_dir).glob("restore-*"))
             assert s2.scalar(select(AuditLog).where(AuditLog.action == "backup.restore")) is not None
     finally:
         app.crypto._fernet.cache_clear()
 
 
 def test_replace_needs_name_and_keeps_safety_backup(rich, session, monkeypatch, tmp_path):
-    monkeypatch.setattr(backup, "settings", dataclasses.replace(settings, backup_dir=str(tmp_path / "bk")))
+    _backup_dir(monkeypatch, tmp_path / "bk")
     org_id = uuid.UUID(rich["organization_id"])
     blob, _ = backup.export(session, org_id, PASS)
     before = _snapshot(session, org_id)
@@ -177,7 +185,7 @@ def test_replace_needs_name_and_keeps_safety_backup(rich, session, monkeypatch, 
 
 
 def test_failed_restore_changes_nothing(rich, session, monkeypatch, tmp_path):
-    monkeypatch.setattr(backup, "settings", dataclasses.replace(settings, backup_dir=str(tmp_path / "bk")))
+    _backup_dir(monkeypatch, tmp_path / "bk")
     org_id = uuid.UUID(rich["organization_id"])
     blob, _ = backup.export(session, org_id, PASS)
     session.add(Expense(organization_id=org_id, category="repair", amount=777, spent_on=date(2026, 11, 29)))
@@ -207,7 +215,7 @@ def test_different_schema_revision_refused(rich, session, monkeypatch):
 # ── API · CLI · 대시보드 ──
 
 def test_api_export_inspect_restore(client, rich, monkeypatch, tmp_path):
-    monkeypatch.setattr(backup, "settings", dataclasses.replace(settings, backup_dir=str(tmp_path / "bk")))
+    _backup_dir(monkeypatch, tmp_path / "bk")
     org = rich["organization_id"]
     assert client.post("/api/v1/backups/export", params=_p(org), json={"passphrase": "short"}).status_code == 422
     res = client.post("/api/v1/backups/export", params=_p(org), json={"passphrase": PASS})
@@ -248,7 +256,7 @@ def test_cli_removes_backups_of_deleted_orgs_after_grace(rich, session_factory, 
     monkeypatch.setattr(backup_cli, "SessionLocal", session_factory)
     monkeypatch.setenv("ROOMAX_BACKUP_PASSPHRASE", PASS)
     gone_recent = tmp_path / "roomax-deadbeef-20261101-000000.roomaxbak"
-    gone_old = [tmp_path / f"roomax-0ldc0de0-2026090{i}-000000.roomaxbak" for i in (1, 2)]
+    gone_old = [tmp_path / f"roomax-0dc0de00-2026090{i}-000000.roomaxbak" for i in (1, 2)]
     for p in [gone_recent, *gone_old]:
         p.write_bytes(b"x")
     old = time.time() - 40 * 86400
@@ -269,3 +277,53 @@ def test_dashboard_reminds_backup(client, rich):
     today = date.today().isoformat()
     d = client.get("/api/v1/dashboard", params=_p(org, as_of=today)).json()
     assert not {"backup_none", "backup_old"} & {a["kind"] for a in d["attention"]}
+
+
+class _MemStore:
+    """Supabase 보관소 흉내 (서명 주소 포함)."""
+    def __init__(self):
+        self.obj = {}
+
+    def put(self, key, data): self.obj[key] = data
+    def get(self, key):
+        if key not in self.obj:
+            raise FileNotFoundError(key)
+        return self.obj[key]
+    def delete(self, keys): [self.obj.pop(k, None) for k in keys]
+    def list(self, prefix): return sorted(k for k in self.obj if k.startswith(prefix))
+    def move(self, src, dst): self.obj[dst] = self.obj.pop(src)
+    def signed_download_url(self, key, expires, name): return f"https://sb/sign/{key}?download={name}"
+    def signed_upload_url(self, key): return f"https://sb/upload/{key}?token=t"
+
+
+def test_direct_transfer_export_and_restore(client, rich, monkeypatch):
+    """서버리스: 백업 파일은 브라우저가 Storage 와 직접 주고받고, 서버는 키로 연다."""
+    from datetime import datetime, timedelta
+
+    from app.services import blobs, scheduled_backup
+    mem = _MemStore()
+    monkeypatch.setattr(blobs, "direct_transfer", lambda: True)
+    real = blobs.store
+    monkeypatch.setattr(blobs, "store", lambda area: mem if area == "backups" else real(area))
+    org = rich["organization_id"]
+    assert client.get("/api/v1/backups/status", params=_p(org)).json()["direct_transfer"] is True
+
+    out = client.post("/api/v1/backups/export", params=_p(org), json={"passphrase": PASS}).json()
+    key = next(k for k in mem.obj if k.startswith("export-"))
+    assert out["download_url"] == f"https://sb/sign/{key}?download={out['filename']}" and out["size"] == len(mem.obj[key])
+
+    up = client.post("/api/v1/backups/upload-url", params=_p(org)).json()
+    assert up["upload_url"].startswith("https://sb/upload/upload-")
+    mem.put(up["key"], mem.obj[key])  # 브라우저가 서명 주소로 올린 셈
+    info = client.post("/api/v1/backups/inspect", data={"key": up["key"], "passphrase": PASS}).json()
+    assert info["compatible"] is True and info["exists"] is True
+    assert client.post("/api/v1/backups/inspect", data={"key": "../etc/passwd", "passphrase": PASS}).status_code == 422
+    res = client.post("/api/v1/backups/restore", data={"key": up["key"], "passphrase": PASS, "confirm_name": ORG_NAME})
+    assert res.status_code == 200, res.text
+    assert up["key"] not in mem.obj  # 다 쓴 업로드 파일은 지움
+    assert any(k.startswith("pre-restore-") for k in mem.obj)  # 안전 백업도 보관소에
+
+    # 매일 작업이 하루 지난 임시 전송 파일을 지운다
+    mem.put("upload-20200101000000-" + "0" * 32 + ".roomaxbak", b"x")
+    removed = scheduled_backup.remove_transfers(mem, datetime.now(backup.KST) + timedelta(days=2))
+    assert removed and not any(k.startswith(("export-", "upload-")) for k in mem.obj)

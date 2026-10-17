@@ -48,6 +48,7 @@ export interface ImportOut {
 
 /** FastAPI 오류(detail 문자열 또는 검증 오류 배열)를 사람이 읽을 문장으로 */
 async function errorText(res: Response): Promise<string> {
+  if (res.status === 413) return "파일이 너무 큽니다. 한 번에 올릴 수 있는 크기는 약 4MB입니다.";
   try {
     const body = await res.json();
     if (typeof body.detail === "string") return body.detail;

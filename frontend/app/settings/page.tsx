@@ -41,6 +41,7 @@ interface Inspect {
 }
 
 async function errorOf(res: Response) {
+  if (res.status === 413) return "파일이 너무 큽니다. 이 서버는 한 번에 약 4MB까지 받습니다.";
   try {
     const b = await res.json();
     return typeof b.detail === "string" ? b.detail : `요청 실패 (${res.status})`;
@@ -54,12 +55,16 @@ export default function SettingsPage() {
   const { me } = useMe();
   const isOwner = me?.user.role === "owner";  // 백업·복구는 대표만 (서버도 같은 규칙)
   const [lastBackup, setLastBackup] = useState<string | null | undefined>(undefined);
+  const [direct, setDirect] = useState(false);  // 서버리스: 백업 파일을 Storage 와 직접 주고받음
   const [ocr, setOcr] = useState<boolean | null>(null);
 
   const reload = useCallback(async () => {
     try {
       setOcr((await api<{ configured: boolean }>("/api/v1/settings/ocr")).configured);
-      if (orgId) setLastBackup((await api<{ last_backup_at: string | null }>(`/api/v1/backups/status?organization_id=${orgId}`)).last_backup_at);
+      if (orgId) {
+        const st = await api<{ last_backup_at: string | null; direct_transfer?: boolean }>(`/api/v1/backups/status?organization_id=${orgId}`);
+        setLastBackup(st.last_backup_at); setDirect(!!st.direct_transfer);
+      }
     } catch {
       /* 화면 아래 각 카드가 자체 오류를 보여줌 */
     }
@@ -79,7 +84,7 @@ export default function SettingsPage() {
         <SecurityCard />
         {isOwner && <MembersCard />}
         {isOwner && orgs && orgs.length > 0 && <ExportCard orgId={orgId} lastBackup={lastBackup} onDone={reload} />}
-        {isOwner && <RestoreCard onDone={reload} />}
+        {isOwner && <RestoreCard direct={direct} onDone={reload} />}
         <ServerBackupCard />
         <OcrCard configured={ocr} />
       </div>
@@ -113,14 +118,24 @@ function ExportCard({ orgId, lastBackup, onDone }: { orgId: string; lastBackup: 
       const res = await apiFetch(`/api/v1/backups/export?organization_id=${orgId}`, {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ passphrase: pw }) });
       if (!res.ok) throw new Error(await errorOf(res));
-      const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "roomax.roomaxbak";
-      const blob = await res.blob();
+      let name: string, size: number;
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = name;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      setMsg({ ok: true, text: `${name} (${(blob.size / 1024).toFixed(0)}KB) 을 내려받았습니다. 비밀번호와 따로 보관하세요.` });
+      if ((res.headers.get("content-type") ?? "").includes("application/json")) {
+        // 서버리스: 서버가 Storage 에 만들어 둔 파일을 서명된 주소(10분)로 바로 받는다
+        const d = (await res.json()) as { download_url: string; filename: string; size: number };
+        name = d.filename; size = d.size;
+        a.href = d.download_url;
+        a.click();
+      } else {
+        name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "roomax.roomaxbak";
+        const blob = await res.blob();
+        size = blob.size;
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+      setMsg({ ok: true, text: `${name} (${(size / 1024).toFixed(0)}KB) 을 내려받았습니다. 비밀번호와 따로 보관하세요.` });
       setPw(""); setPw2("");
       onDone();
     } catch (e) {
@@ -161,8 +176,9 @@ function ExportCard({ orgId, lastBackup, onDone }: { orgId: string; lastBackup: 
   );
 }
 
-function RestoreCard({ onDone }: { onDone: () => void }) {
+function RestoreCard({ direct, onDone }: { direct: boolean; onDone: () => void }) {
   const [file, setFile] = useState<File | null>(null);
+  const [key, setKey] = useState<string | null>(null);  // 서버리스: Storage 에 올린 파일의 키
   const [pw, setPw] = useState("");
   const [info, setInfo] = useState<Inspect | null>(null);
   const [confirm, setConfirm] = useState("");
@@ -170,9 +186,9 @@ function RestoreCard({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ replaced: boolean; safety_backup: string | null; name: string } | null>(null);
 
-  const form = (extra?: Record<string, string>) => {
+  const form = (extra?: Record<string, string>, uploaded = key) => {
     const fd = new FormData();
-    fd.append("file", file!);
+    if (uploaded) fd.append("key", uploaded); else fd.append("file", file!);
     fd.append("passphrase", pw);
     for (const [k, v] of Object.entries(extra ?? {})) fd.append(k, v);
     return fd;
@@ -181,7 +197,15 @@ function RestoreCard({ onDone }: { onDone: () => void }) {
   async function inspect() {
     setBusy(true); setError(null); setInfo(null); setDone(null);
     try {
-      const res = await apiFetch("/api/v1/backups/inspect", { method: "POST", body: form() });
+      let uploaded = key;
+      if (direct && !uploaded) {
+        // 서버리스: 서명된 주소로 Storage 에 직접 올리고(로그인 쿠키는 보내지 않음), 서버는 그 키로 연다
+        const u = await api<{ upload_url: string; key: string }>("/api/v1/backups/upload-url", { method: "POST" });
+        const put = await fetch(u.upload_url, { method: "PUT", body: file!, headers: { "content-type": "application/octet-stream" } });
+        if (!put.ok) throw new Error(`파일을 올리지 못했습니다 (${put.status})`);
+        uploaded = u.key; setKey(u.key);
+      }
+      const res = await apiFetch("/api/v1/backups/inspect", { method: "POST", body: form(undefined, uploaded) });
       if (!res.ok) throw new Error(await errorOf(res));
       setInfo(await res.json());
     } catch (e) {
@@ -200,7 +224,7 @@ function RestoreCard({ onDone }: { onDone: () => void }) {
       if (!res.ok) throw new Error(await errorOf(res));
       const r = await res.json();
       setDone({ replaced: r.replaced, safety_backup: r.safety_backup, name: r.organization.name });
-      setInfo(null); setFile(null); setPw(""); setConfirm("");
+      setInfo(null); setFile(null); setKey(null); setPw(""); setConfirm("");
       onDone();
     } catch (e) {
       setError((e as Error).message);
@@ -218,7 +242,7 @@ function RestoreCard({ onDone }: { onDone: () => void }) {
           <span className="mb-1 block text-slate-600">백업 파일 (.roomaxbak)</span>
           <input className="field w-full py-1.5 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-xs"
             type="file" accept=".roomaxbak,application/octet-stream"
-            onChange={(e) => { setFile(e.target.files?.[0] ?? null); setInfo(null); setDone(null); }} />
+            onChange={(e) => { setFile(e.target.files?.[0] ?? null); setKey(null); setInfo(null); setDone(null); }} />
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-slate-600">백업 비밀번호</span>

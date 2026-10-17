@@ -9,7 +9,8 @@ from app.models import Base
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# 비밀번호의 특수문자를 URL 인코딩하면 % 가 생기는데, alembic 설정 파서는 % 를 보간 문법으로 읽는다
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 target_metadata = Base.metadata
 
 

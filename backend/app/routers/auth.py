@@ -135,7 +135,7 @@ def _consume(session: Session, token: str, purpose: str) -> EmailToken | None:
 def _send_verify(session: Session, user: User, background: BackgroundTasks) -> None:
     token = _issue(session, user, "verify_email", VERIFY_TTL)
     link = f"{settings.app_url}/verify-email?token={token}"
-    background.add_task(mailer.deliver, mailer.verify_mail(user.email, user.name, link))
+    mailer.send_after_response(background, mailer.verify_mail(user.email, user.name, link))
 
 
 def _log(session: Session, user: User, action: str, detail: dict | None = None) -> None:
@@ -380,7 +380,7 @@ def reset_request(body: ResetRequestIn, background: BackgroundTasks, session: Se
     user = session.scalar(select(User).where(func.lower(User.email) == email))
     if user and user.is_active and auth.allow_send(f"reset:{email}", 3, 3600):
         token = _issue(session, user, "reset_password", RESET_TTL)
-        background.add_task(mailer.deliver, mailer.reset_mail(user.email, user.name,
+        mailer.send_after_response(background, mailer.reset_mail(user.email, user.name,
                                                               f"{settings.app_url}/reset-password?token={token}"))
         _log(session, user, "auth.password_reset_request")
         session.commit()

@@ -11,13 +11,12 @@
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.models import AuditLog, AuthSession, Base, EmailToken, Invitation, LeaseDocument, Organization, User
-from app.services import backup, storage
+from app.services import backup, blobs, storage
 
 
 def _detach_user(session: Session, user_ids: list[uuid.UUID]) -> None:
@@ -70,8 +69,7 @@ def delete_organization(session: Session, organization_id: uuid.UUID) -> dict:
     # 커밋 뒤 파일 정리: 계약서 원본, 복구 직전 안전 백업
     for name in files:
         storage.delete(name)
-    removed_safety = 0
-    for p in backup.safety_backups(organization_id):
-        Path(p).unlink(missing_ok=True)
-        removed_safety += 1
+    safety = backup.safety_backups(organization_id)
+    blobs.store("backups").delete(safety)
+    removed_safety = len(safety)
     return {"deleted": counts, "files": len(files), "safety_backups": removed_safety}

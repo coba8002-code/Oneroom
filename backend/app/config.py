@@ -2,17 +2,34 @@ import os
 from dataclasses import dataclass
 
 
+def _db_url(url: str) -> str:
+    """Supabase 등이 주는 postgresql:// · postgres:// 주소를 이 앱의 드라이버(psycopg 3) 주소로 바꾼다."""
+    for scheme in ("postgresql://", "postgres://"):
+        if url.startswith(scheme):
+            return "postgresql+psycopg://" + url[len(scheme):]
+    return url
+
+
 @dataclass(frozen=True)
 class Settings:
     # production 이면 시작할 때 위험한 설정을 검사하고, 문제가 있으면 서버를 띄우지 않는다
     env: str = os.getenv("ROOMAX_ENV", "development")
-    database_url: str = os.getenv(
+    database_url: str = _db_url(os.getenv(
         "ROOMAX_DATABASE_URL", "postgresql+psycopg://roomax:roomax@localhost:5432/roomax"
-    )
+    ))
     # Fernet 키: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     field_key: str = os.getenv("ROOMAX_FIELD_KEY", "")
     # 계약서 파일 저장 위치 (암호화 저장). 운영에서는 백업 대상에 포함할 것
     upload_dir: str = os.getenv("ROOMAX_UPLOAD_DIR", "uploads")
+    # 파일 보관소: local(디스크) | supabase(Storage — Vercel 등 서버리스). app/services/blobs.py
+    storage: str = os.getenv("ROOMAX_STORAGE", "local")
+    supabase_url: str = os.getenv("ROOMAX_SUPABASE_URL", "")
+    supabase_service_key: str = os.getenv("ROOMAX_SUPABASE_SERVICE_KEY", "")
+    supabase_bucket: str = os.getenv("ROOMAX_SUPABASE_BUCKET", "roomax")
+    # 서버리스(Vercel 은 VERCEL=1 을 넣어 줌): DB 연결을 매 요청 새로(NullPool), 풀러 호환(prepared statement 끔)
+    serverless: bool = os.getenv("ROOMAX_SERVERLESS", os.getenv("VERCEL", "")) in ("1", "true")
+    # 매일 작업(정기 백업·DB 깨우기) 주소를 부를 때 쓰는 비밀값 — Vercel Cron 이 Authorization: Bearer 로 보냄
+    cron_secret: str = os.getenv("ROOMAX_CRON_SECRET", os.getenv("CRON_SECRET", ""))
     # 복구 직전 자동 안전 백업을 두는 곳 (백업 파일과 같은 비밀번호로 암호화됨)
     backup_dir: str = os.getenv("ROOMAX_BACKUP_DIR", "backups")
     # NAVER CLOVA OCR (General). 둘 다 있어야 OCR 사용, 없으면 이미지만 저장하고 직접 입력
@@ -29,7 +46,9 @@ class Settings:
     app_url: str = os.getenv("ROOMAX_APP_URL", "http://localhost:3000").rstrip("/")
     # 메일 발송: file(개발 — mail_outbox 폴더에 .eml 로 저장) | smtp(운영)
     mail_mode: str = os.getenv("ROOMAX_MAIL_MODE", "file")
-    mail_outbox_dir: str = os.getenv("ROOMAX_MAIL_OUTBOX_DIR", "mail_outbox")
+    # 서버리스는 /tmp 만 쓸 수 있음 (그것도 잠깐) — 서버리스에서는 실제 메일(smtp)을 권장
+    mail_outbox_dir: str = os.getenv("ROOMAX_MAIL_OUTBOX_DIR",
+                                     "/tmp/mail_outbox" if os.getenv("VERCEL") == "1" else "mail_outbox")
     mail_from: str = os.getenv("ROOMAX_MAIL_FROM", "ROOMAX <no-reply@localhost>")
     smtp_host: str = os.getenv("ROOMAX_SMTP_HOST", "")
     smtp_port: int = int(os.getenv("ROOMAX_SMTP_PORT", "587"))
@@ -64,6 +83,10 @@ def production_problems(s: Settings) -> list[str]:
     # `python -m app.admin_cli reset-link <이메일>` 로 재설정 링크를 만들 수 있어 메일 없이도 운영 가능
     if s.signup_mode == "open" and (s.mail_mode != "smtp" or not s.smtp_host):
         problems.append("ROOMAX_MAIL_MODE=smtp 와 ROOMAX_SMTP_HOST 가 필요합니다 (file 모드는 메일을 실제로 보내지 않음)")
+    if s.serverless and s.storage != "supabase":
+        problems.append("서버리스(Vercel)에서는 서버 디스크에 파일을 둘 수 없습니다 — ROOMAX_STORAGE=supabase 로 설정하세요")
+    if s.storage == "supabase" and not (s.supabase_url and s.supabase_service_key):
+        problems.append("ROOMAX_STORAGE=supabase 인데 ROOMAX_SUPABASE_URL·ROOMAX_SUPABASE_SERVICE_KEY 가 없습니다")
     if ":roomax@" in s.database_url:
         problems.append("ROOMAX_DATABASE_URL 에 개발용 비밀번호(roomax)가 들어 있습니다")
     return problems
