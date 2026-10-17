@@ -340,6 +340,10 @@ class LeaseEnding(BaseModel):
     end_date: date
     days_left: int
     deposit_to_return: int | None
+    stage: Literal["early", "open", "closed", "ended"]
+    notice_from: date
+    notice_until: date
+    notice_sent_on: date | None
 
 
 class TaxEventOut(BaseModel):

@@ -202,20 +202,29 @@ function DashboardBody({ d, busy, onGenerate }: { d: Dashboard; busy: boolean; o
             </li>
           ))}
         </ListCard>
-        <ListCard icon={FileSearch} title="계약 만료 · 보증금 반환" empty="60일 안에 만료되는 계약이 없습니다.">
-          {d.lease_endings.map((x) => (
-            <li key={x.unit_no} className="space-y-0.5">
-              <div className="flex justify-between gap-2">
-                <span><b className="font-semibold">{x.unit_no}호</b> {x.tenant_name}</span>
-                <span className={`chip ${x.days_left < 0 ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-600"}`}>
-                  {x.days_left >= 0 ? `D-${x.days_left}` : `${-x.days_left}일 지남`}
-                </span>
-              </div>
-              <div className="text-xs text-slate-500">
-                만료 {x.end_date}{x.deposit_to_return ? ` · 반환할 보증금 ${won(x.deposit_to_return)}` : ""}
-              </div>
-            </li>
-          ))}
+        <ListCard icon={FileSearch} title="계약 만료 · 갱신 통지" empty="곧 갱신 통지 기간이 열리거나 만료되는 계약이 없습니다."
+          footnote="주택임대차보호법 제6조: 만료 6개월 전~2개월 전에 갱신 거절·조건 변경을 통지하지 않으면 같은 조건으로 갱신된 것으로 봅니다. 통지는 임차인에게 닿아야 하니 여유를 두고 보내세요.">
+          {d.lease_endings.map((x) => {
+            const [label, tone] = NOTICE_STAGE[x.notice_sent_on && x.stage !== "ended" ? "sent" : x.stage];
+            return (
+              <li key={x.unit_no} className="space-y-0.5">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <span><b className="font-semibold">{x.unit_no}호</b> {x.tenant_name}</span>
+                  <span className="flex gap-1">
+                    <span className={`chip ${tone}`}>{label}</span>
+                    <span className={`chip ${x.days_left < 0 ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-600"}`}>
+                      {x.days_left >= 0 ? `D-${x.days_left}` : `${-x.days_left}일 지남`}
+                    </span>
+                  </span>
+                </div>
+                <div className="text-xs text-slate-500">
+                  만료 {x.end_date}
+                  {x.stage !== "ended" && (x.notice_sent_on ? ` · 안내 보냄 ${x.notice_sent_on}` : ` · 통지 ${x.notice_from} ~ ${x.notice_until}`)}
+                  {x.deposit_to_return && x.days_left <= DEPOSIT_RETURN_DAYS ? ` · 반환할 보증금 ${won(x.deposit_to_return)}` : ""}
+                </div>
+              </li>
+            );
+          })}
         </ListCard>
         <ListCard icon={Landmark} title="세금 일정" empty="120일 안에 일반 일정이 없습니다."
           footnote="일반 법정 일정입니다. 본인 해당 여부(사업자등록·주택 수·공시가격 등)는 확인이 필요하며, 마감이 주말·공휴일이면 다음 영업일입니다.">
@@ -397,6 +406,16 @@ function RecentCard({ d }: { d: Dashboard }) {
   );
 }
 
+const DEPOSIT_RETURN_DAYS = 60; // 서버 dashboard.LEASE_END_WINDOW 와 같게 — 갱신될 수 있는 먼 계약엔 반환액을 띄우지 않음
+
+const NOTICE_STAGE: Record<string, [string, string]> = {
+  early: ["통지 기간 전", "bg-slate-100 text-slate-600"],
+  open: ["통지 기간", "bg-amber-50 text-amber-800"],
+  closed: ["통지 기간 지남", "bg-red-50 text-red-700"],
+  ended: ["만료", "bg-slate-100 text-slate-600"],
+  sent: ["안내 보냄", "bg-emerald-50 text-emerald-700"],
+};
+
 const ALERT_ICON: Record<string, { icon: LucideIcon; tone: string }> = {
   bank_none: { icon: ArrowDownToLine, tone: "bg-amber-50 text-amber-600" },
   bank_stale: { icon: ArrowDownToLine, tone: "bg-amber-50 text-amber-600" },
@@ -406,6 +425,9 @@ const ALERT_ICON: Record<string, { icon: LucideIcon; tone: string }> = {
   overdue: { icon: CircleAlert, tone: "bg-red-50 text-red-500" },
   deposit_unreceived: { icon: Landmark, tone: "bg-sky-50 text-sky-600" },
   lease_ending: { icon: CalendarClock, tone: "bg-indigo-50 text-indigo-600" },
+  lease_notice_soon: { icon: CalendarClock, tone: "bg-indigo-50 text-indigo-600" },
+  lease_notice_open: { icon: CalendarClock, tone: "bg-amber-50 text-amber-600" },
+  lease_notice_missed: { icon: CalendarClock, tone: "bg-red-50 text-red-500" },
   vacant: { icon: Info, tone: "bg-slate-100 text-slate-500" },
 };
 

@@ -363,8 +363,9 @@ class Notification(Base):
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tenants.id"))
     lease_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("leases.id"))
     charge_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("charges.id"), index=True)
+    term_end: Mapped[date | None] = mapped_column(Date)  # 계약 만료 안내가 가리키는 만료일 (갱신되면 새 안내 필요)
     channel: Mapped[str] = mapped_column(String(20))  # sms | alimtalk
-    template: Mapped[str] = mapped_column(String(100))  # rent_notice | overdue_notice
+    template: Mapped[str] = mapped_column(String(100))  # rent_notice | overdue_notice | renewal_notice
     body: Mapped[str | None] = mapped_column(Text)  # 만들 때 채운 문구 (초안에서 고칠 수 있음)
     status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | approved | sent | failed | discarded
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -382,6 +383,7 @@ class NotificationSetting(Base):
     grace_days: Mapped[int | None] = mapped_column(Integer)
     rent_template: Mapped[str | None] = mapped_column(Text)
     overdue_template: Mapped[str | None] = mapped_column(Text)
+    renewal_template: Mapped[str | None] = mapped_column(Text)  # 계약 만료 안내 (주임법 §6 갱신 통지)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 

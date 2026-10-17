@@ -1,10 +1,12 @@
-"""임차인 메시지 (월세 고지 · 미납 안내).
+"""임차인 메시지 (월세 고지 · 미납 안내 · 계약 만료 안내).
 
 규칙 (CLAUDE.md 절대 규칙 2 — 자동 독촉 금지):
 - 시스템은 '초안'만 만든다. 관리자가 승인(approved_at)해야 보낼 수 있다.
 - 미납 안내 초안은 세 가지가 모두 있을 때만: 관리자가 정한 유예기간이 지났고, 은행 내역이 유예기간 끝까지
   반영돼 있고, 입금 검토 대기가 없다. 하나라도 없으면 만들지 않고 이유를 돌려준다.
 - 유예기간·문구는 관리자가 정한다. 기본값을 두지 않는다 (비어 있으면 그 종류의 초안을 만들지 않음).
+- 계약 만료 안내는 갱신 통지 기간(만료 6개월~2개월 전, 주임법 §6) 안에서만 만든다. 갱신 거절·조건 변경 같은
+  내용은 관리자가 정한 문구 그대로 — 시스템이 정하지 않는다.
 - 발송 업체가 연결되기 전에는 승인 후 문구를 복사해 직접 보내고 '직접 보냄'으로 표시한다.
 """
 from __future__ import annotations
@@ -17,13 +19,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AuditLog, Charge, Lease, Notification, NotificationSetting, Property, Tenant, Unit
-from app.services import ledger, messaging, receivables
+from app.services import lease_renewal, ledger, messaging, receivables
 from app.services.expenses import kst_date
 
-KINDS = ("rent_notice", "overdue_notice")
+KINDS = ("rent_notice", "overdue_notice", "renewal_notice")
 VARIABLES = {
     "임차인": "임차인 이름", "호실": "호실 번호", "청구월": "예: 2026-11", "금액": "그 달 월세 (원)",
     "납부일": "예: 11월 25일", "미납액": "아직 안 낸 금액 (원)", "경과일": "납부일에서 지난 날 수",
+}
+RENEWAL_VARIABLES = {
+    "임차인": "임차인 이름", "호실": "호실 번호", "월세": "지금 월세 (원)", "보증금": "계약 보증금 (원)",
+    "계약시작일": "예: 2025년 9월 1일", "만료일": "예: 2027년 8월 31일", "통지마감일": "만료 2개월 전 날",
 }
 VAR_RE = re.compile(r"\{([^{}]+)\}")
 MAX_GRACE = 60
@@ -33,8 +39,8 @@ class NotifyError(Exception):
     pass
 
 
-def unknown_variables(template: str) -> list[str]:
-    return sorted({v for v in VAR_RE.findall(template) if v not in VARIABLES})
+def unknown_variables(template: str, known: dict[str, str] = VARIABLES) -> list[str]:
+    return sorted({v for v in VAR_RE.findall(template) if v not in known})
 
 
 def get_settings(session: Session, organization_id: uuid.UUID) -> NotificationSetting:
@@ -43,11 +49,13 @@ def get_settings(session: Session, organization_id: uuid.UUID) -> NotificationSe
 
 
 def save_settings(session: Session, organization_id: uuid.UUID, *, grace_days: int | None,
-                  rent_template: str | None, overdue_template: str | None) -> NotificationSetting:
+                  rent_template: str | None, overdue_template: str | None,
+                  renewal_template: str | None = None) -> NotificationSetting:
     if grace_days is not None and not (0 <= grace_days <= MAX_GRACE):
         raise NotifyError(f"유예기간은 0~{MAX_GRACE}일로 정하세요")
-    for label, t in (("월세 고지", rent_template), ("미납 안내", overdue_template)):
-        if t and (bad := unknown_variables(t)):
+    for label, t, known in (("월세 고지", rent_template, VARIABLES), ("미납 안내", overdue_template, VARIABLES),
+                            ("계약 만료 안내", renewal_template, RENEWAL_VARIABLES)):
+        if t and (bad := unknown_variables(t, known)):
             raise NotifyError(f"{label} 문구에 모르는 칸이 있습니다: " + ", ".join("{" + b + "}" for b in bad))
     row = session.scalar(select(NotificationSetting).where(NotificationSetting.organization_id == organization_id))
     if row is None:
@@ -56,10 +64,12 @@ def save_settings(session: Session, organization_id: uuid.UUID, *, grace_days: i
     row.grace_days = grace_days
     row.rent_template = (rent_template or "").strip() or None
     row.overdue_template = (overdue_template or "").strip() or None
+    row.renewal_template = (renewal_template or "").strip() or None
     row.updated_at = datetime.now(timezone.utc)
     session.add(AuditLog(action="notification.settings", entity_type="organization", entity_id=str(organization_id),
                          detail={"grace_days": grace_days, "rent_template": bool(row.rent_template),
-                                 "overdue_template": bool(row.overdue_template)}))
+                                 "overdue_template": bool(row.overdue_template),
+                                 "renewal_template": bool(row.renewal_template)}))
     session.commit()
     return row
 
@@ -150,6 +160,49 @@ def make_overdue_notices(session: Session, organization_id: uuid.UUID, as_of: da
     return {"created": created, "skipped": skipped}
 
 
+def _korean(d: date) -> str:
+    return f"{d.year}년 {d.month}월 {d.day}일"
+
+
+def make_renewal_notices(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
+    """계약 만료 안내 초안 — as_of 가 그 계약의 갱신 통지 기간(만료 6개월~2개월 전) 안일 때만."""
+    cfg = get_settings(session, organization_id)
+    if not cfg.renewal_template:
+        raise NotifyError("계약 만료 안내 문구를 먼저 정하세요 (알림 설정)")
+    rows = session.execute(
+        select(Lease, Unit.unit_no, Tenant).join(Unit, Lease.unit_id == Unit.id)
+        .join(Property, Unit.property_id == Property.id).join(Tenant, Lease.tenant_id == Tenant.id)
+        .where(Property.organization_id == organization_id, Lease.status == "active")
+        .order_by(Unit.unit_no)).all()
+    created, skipped = 0, []
+    for lease, unit_no, tenant in rows:
+        if lease.end_date is None:
+            skipped.append(f"{unit_no} 만료일 없음")
+            continue
+        w = lease_renewal.window(lease.end_date)
+        stage = w.stage(as_of)
+        if stage == "early":
+            continue  # 아직 먼 계약은 목록을 어지럽히지 않게 조용히 건너뛴다
+        if stage != "open":
+            skipped.append(f"{unit_no} 통지 기간({w.notice_until.isoformat()}까지)이 지남 — 만료 {lease.end_date.isoformat()}")
+            continue
+        if session.scalar(select(Notification.id).where(
+                Notification.lease_id == lease.id, Notification.template == "renewal_notice",
+                Notification.term_end == lease.end_date,
+                Notification.status.in_(("draft", "approved", "sent", "failed")))) is not None:
+            skipped.append(f"{unit_no} 이번 만료({lease.end_date.isoformat()}) 안내를 이미 만듦")
+            continue
+        ctx = {"임차인": tenant.name, "호실": unit_no, "월세": f"{lease.rent:,}", "보증금": f"{lease.deposit:,}",
+               "계약시작일": _korean(lease.start_date), "만료일": _korean(lease.end_date),
+               "통지마감일": _korean(w.notice_until)}
+        session.add(Notification(organization_id=organization_id, tenant_id=tenant.id, lease_id=lease.id,
+                                 term_end=lease.end_date, channel="alimtalk", template="renewal_notice",
+                                 body=render(cfg.renewal_template, ctx), status="draft"))
+        created += 1
+    session.commit()
+    return {"created": created, "skipped": skipped}
+
+
 def get(session: Session, organization_id: uuid.UUID, notification_id: uuid.UUID) -> Notification:
     n = session.get(Notification, notification_id)
     if n is None or n.organization_id != organization_id:
@@ -219,5 +272,6 @@ def listing(session: Session, organization_id: uuid.UUID) -> list[dict]:
         .order_by(Notification.created_at.desc())).all()
     return [{"id": str(n.id), "kind": n.template, "status": n.status, "body": n.body, "tenant_name": name,
              "phone": phone, "unit_no": unit_no, "period": period, "created_at": n.created_at,
-             "approved_at": n.approved_at, "sent_at": n.sent_at, "sent_via": n.sent_via, "error": n.error}
+             "lease_end": n.term_end, "approved_at": n.approved_at, "sent_at": n.sent_at,
+             "sent_via": n.sent_via, "error": n.error}
             for n, name, phone, unit_no, period in rows]

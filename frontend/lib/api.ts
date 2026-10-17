@@ -275,6 +275,7 @@ export interface Dashboard {
   due_soon: { unit_no: string; due_date: string; outstanding: number }[];
   lease_endings: {
     unit_no: string; tenant_name: string; end_date: string; days_left: number; deposit_to_return: number | null;
+    stage: "early" | "open" | "closed" | "ended"; notice_from: string; notice_until: string; notice_sent_on: string | null;
   }[];
   tax_events: {
     name: string; start: string; end: string; note: string; url: string; in_progress: boolean; days_until_end: number;

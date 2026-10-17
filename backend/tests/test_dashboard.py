@@ -80,7 +80,9 @@ def test_lease_ending_and_deposit_return(client):
         ]}).json()
     d = _dash(client, res["organization_id"], "2026-11-12")
     assert d["lease_endings"] == [{"unit_no": "101", "tenant_name": "곧퇴거", "end_date": "2026-12-14",
-                                   "days_left": 32, "deposit_to_return": 5000000}]
+                                   "days_left": 32, "deposit_to_return": 5000000, "stage": "closed",
+                                   "notice_from": "2026-06-14", "notice_until": "2026-10-14",
+                                   "notice_sent_on": None}]
     msgs = [a["message"] for a in d["attention"]]
     assert any("101 계약 32일 후 만료, 보증금 5,000,000원 반환 예정" in m for m in msgs)
     assert any("102 보증금 3,000,000원 수령 기록 없음" in m for m in msgs)
@@ -101,3 +103,27 @@ def test_tax_calendar_is_general_and_upcoming():
 def test_bank_accounts_list(client, onboarded):
     accts = client.get("/api/v1/bank-accounts", params={"organization_id": onboarded["organization_id"]}).json()
     assert [a["id"] for a in accts] == [onboarded["bank_account_id"]]
+
+
+def test_renewal_notice_window_on_dashboard(client):
+    """주임법 §6: 만료 6개월~2개월 전 통지. 기간이 열리기 30일 전부터 알리고, 기간 안이면 경고, 지나면 확인 요청."""
+    res = client.post("/api/v1/onboarding", json={
+        "property": {"name": "갱신 테스트"},
+        "units": [{"unit_no": "201", "tenant_name": "갱신대상", "rent": 500000, "due_day": 5,
+                   "start_date": "2025-08-31", "end_date": "2027-08-30", "deposit": 10000000}]}).json()
+    org = res["organization_id"]
+
+    def kinds_and_ending(as_of):
+        d = _dash(client, org, as_of)
+        return {a["kind"]: a["message"] for a in d["attention"]}, d["lease_endings"]
+
+    att, ends = kinds_and_ending("2026-12-31")  # 통지 기간(2027-02-28~2027-06-30)보다 59일 전 → 아직 안 보임
+    assert ends == [] and not any(k.startswith("lease_") for k in att)
+    att, ends = kinds_and_ending("2027-02-01")
+    assert ends[0]["stage"] == "early" and ends[0]["notice_from"] == "2027-02-28"
+    assert "2027-02-28부터 2027-06-30까지" in att["lease_notice_soon"]
+    att, ends = kinds_and_ending("2027-06-30")  # 마지막 날까지 '통지 기간'
+    assert ends[0]["stage"] == "open" and "2027-06-30까지" in att["lease_notice_open"]
+    assert "lease_ending" not in att  # 보증금 반환 안내(60일)는 아직
+    att, ends = kinds_and_ending("2027-07-01")
+    assert ends[0]["stage"] == "closed" and "같은 조건으로 2년 갱신" in att["lease_notice_missed"]

@@ -163,3 +163,59 @@ def test_org_deletion_removes_messages(client, org, session):
     assert client.post("/api/v1/auth/account/delete", json={"password": PASSWORD, "confirm_name": ORG_NAME}).status_code == 200
     session.expire_all()
     assert session.scalar(select(func.count()).select_from(Notification)) == 0
+
+
+RENEWAL_T = "{호실}호 {임차인}님, 계약이 {만료일}에 끝납니다. 갱신 여부를 {통지마감일} 전에 알려 주세요."
+
+
+def _renewal_org(client):
+    """만료일이 다른 계약 3건: 통지 기간 안 / 통지 기간 지남 / 아직 먼 계약 + 만료일 없는 계약."""
+    return client.post("/api/v1/onboarding", json={
+        "property": {"name": "갱신 안내"},
+        "units": [
+            {"unit_no": "101", "tenant_name": "기간안", "rent": 450000, "due_day": 5, "deposit": 10000000,
+             "start_date": "2025-09-01", "end_date": "2027-08-31"},
+            {"unit_no": "102", "tenant_name": "기간지남", "rent": 450000, "due_day": 5,
+             "start_date": "2025-07-01", "end_date": "2027-06-30"},
+            {"unit_no": "103", "tenant_name": "먼계약", "rent": 450000, "due_day": 5,
+             "start_date": "2026-09-01", "end_date": "2028-08-31"},
+            {"unit_no": "104", "tenant_name": "기한없음", "rent": 450000, "due_day": 5, "start_date": "2026-01-01"},
+        ]}).json()["organization_id"]
+
+
+def test_renewal_notice_only_inside_notice_window(client):
+    org = _renewal_org(client)
+    url = "/api/v1/notifications/renewal-notices"
+    res = client.post(url, params=_p(org, as_of="2027-05-10"))
+    assert res.status_code == 409 and "계약 만료 안내 문구" in res.json()["detail"]  # 기본 문구 없음
+    bad = _settings(client, org, renewal_template="{임차인}님 {미납액}원")  # 청구용 칸은 못 씀
+    assert bad.status_code == 409 and "{미납액}" in bad.json()["detail"]
+    s = _settings(client, org, renewal_template=RENEWAL_T).json()
+    assert s["renewal_template"] == RENEWAL_T and "통지마감일" in s["renewal_variables"]
+
+    r = client.post(url, params=_p(org, as_of="2027-05-10")).json()
+    # 101: 통지 기간 2027-02-28~2027-06-30 안 → 초안 / 102: 2027-04-30 까지라 지남 / 103: 아직 멂(조용히) / 104: 만료일 없음
+    assert r["created"] == 1
+    assert any(x.startswith("102 통지 기간(2027-04-30까지)이 지남") for x in r["skipped"])
+    assert "104 만료일 없음" in r["skipped"] and not any(x.startswith("103") for x in r["skipped"])
+    n = next(i for i in client.get("/api/v1/notifications", params=_p(org)).json() if i["kind"] == "renewal_notice")
+    assert n["body"] == "101호 기간안님, 계약이 2027년 8월 31일에 끝납니다. 갱신 여부를 2027년 6월 30일 전에 알려 주세요."
+    assert n["lease_end"] == "2027-08-31" and n["status"] == "draft" and n["period"] is None
+    again = client.post(url, params=_p(org, as_of="2027-06-01")).json()
+    assert again["created"] == 0 and any("이미 만듦" in x for x in again["skipped"])
+
+
+def test_sent_renewal_notice_clears_dashboard_warning(client):
+    org = _renewal_org(client)
+    _settings(client, org, renewal_template=RENEWAL_T)
+    dash = lambda: client.get("/api/v1/dashboard", params=_p(org, as_of="2027-05-10")).json()  # noqa: E731
+    assert "lease_notice_open" in {a["kind"] for a in dash()["attention"]}
+    client.post("/api/v1/notifications/renewal-notices", params=_p(org, as_of="2027-05-10"))
+    nid = next(i["id"] for i in client.get("/api/v1/notifications", params=_p(org)).json())
+    assert "lease_notice_open" in {a["kind"] for a in dash()["attention"]}  # 초안만으로는 통지가 아님
+    client.post(f"/api/v1/notifications/{nid}/approve", params=_p(org))
+    client.post(f"/api/v1/notifications/{nid}/mark-sent", params=_p(org))
+    d = dash()
+    row = next(e for e in d["lease_endings"] if e["unit_no"] == "101")
+    assert row["notice_sent_on"] is not None
+    assert not any(a["kind"] == "lease_notice_open" and a["message"].startswith("101") for a in d["attention"])
