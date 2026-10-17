@@ -276,6 +276,19 @@ npm run dev                     # http://localhost:3000/onboarding
 - 비용 보호: 사업장당 하루 질문 수 상한(`ROOMAX_AI_DAILY_LIMIT`, 기본 50), 응답 깊이 낮음(effort low), 안전 분류기 거절 시 서버 측 대체 모델(fallbacks)
 - 키가 없으면 화면에 '연결 안 됨' 안내만 (다른 기능 영향 없음)
 
+## 브라우저 시험 (`e2e/`)
+
+실제 PostgreSQL·API·화면을 띄워 브라우저(Playwright)로 핵심 흐름을 확인합니다. GitHub Actions 의 `e2e` 작업이 PR 마다 실행하고,
+실패하면 스크린샷·trace 를 올립니다. 화면 오류(콘솔 오류)가 하나라도 나면 실패합니다.
+
+- 가입 → 호실 등록 → 청구 → 은행 내역(재업로드 중복 없음) → 매칭 → 홈('미납 (확인 전)')·임대료 검토 대기
+- 입금 알림 연결 주소 → 로그인 없이 보낸 알림 → 홈 '오늘 납부일' 입금 확인 (틀린 주소 404)
+- 정기 점검 추가 → 했음 기록 → 다음 예정일 → 되돌리기 / 공실 → 모집 조건 → 광고 문구 / AI 비서 '연결 안 됨'
+- 휴대폰 폭 390px 에서 주요 화면 10개 가로 넘침 없음
+
+로컬: `cd frontend && ROOMAX_API_ORIGIN=http://127.0.0.1:8000 npm run build`, `cd e2e && npm ci && npx playwright install chromium`,
+`ROOMAX_DATABASE_URL=postgresql://…/roomax_e2e npx playwright test` (서버는 시험이 직접 띄움, 백엔드 파이썬은 `E2E_PYTHON` 으로 지정)
+
 ## 개인 사용 모드
 
 - `ROOMAX_SIGNUP_MODE=first_only`(배포 기본값): 처음 가입한 한 명만 대표, 이후 가입 화면은 닫히고 멤버는 초대로만.

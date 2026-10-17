@@ -35,7 +35,7 @@
 | 백엔드 | Python 3.11+ · FastAPI · SQLAlchemy 2.0 · Pydantic v2 · Alembic |
 | DB | PostgreSQL 16 (테스트는 SQLite 메모리) |
 | 프런트 | Next.js (App Router) · TypeScript · Tailwind CSS · 모바일 반응형 |
-| 테스트 | `pytest` (backend) — 청구 생성·거래 중복 방지는 테스트 필수 |
+| 테스트 | `pytest` (backend) — 청구 생성·거래 중복 방지는 테스트 필수. 브라우저 흐름은 `e2e/` (Playwright, CI 의 e2e 작업) — 새 화면·흐름을 만들면 스펙도 추가 |
 | 커밋 | Conventional Commits (`feat:`, `fix:`, `docs:` …) |
 | API 경로 | `/api/v1/kebab-case` |
 
