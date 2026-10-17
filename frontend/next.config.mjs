@@ -22,7 +22,11 @@ const nextConfig = {
       return [{ source: "/api/:path*", destination: `${apiOrigin}/api/:path*` }];
     },
     async headers() {
-      return [{ source: "/:path*", headers: securityHeaders }];
+      return [
+        { source: "/:path*", headers: securityHeaders },
+        // 임차인 화면 주소에는 비밀 토큰이 들어 있다 — 검색 제외, 다른 사이트에 주소를 넘기지 않음
+        { source: "/t/:path*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }, { key: "X-Robots-Tag", value: "noindex" }] },
+      ];
     },
   }),
 };

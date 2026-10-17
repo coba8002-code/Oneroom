@@ -17,7 +17,7 @@ interface Fixture {
 interface Repair {
   id: string; unit_id: string | null; unit_no: string | null; fixture_id: string | null; fixture_name: string | null;
   description: string; reported_on: string; status: "open" | "done"; completed_on: string | null; vendor: string | null;
-  cost: number | null; payer: "landlord" | "tenant" | "undecided"; note: string | null;
+  cost: number | null; payer: "landlord" | "tenant" | "undecided"; note: string | null; source: "admin" | "tenant";
 }
 interface Plan {
   from: string; to: string; unplanned: number; warranty_ending: Fixture[];
@@ -350,6 +350,7 @@ function RepairList({ repairs, codes, canWrite, busy, onEdit, onDone, onDelete }
             <span className={`chip ${r.status === "open" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}>
               {r.status === "open" ? "진행 중" : `완료 ${r.completed_on}`}</span>
             <b>{where(r.unit_no)}</b>{r.fixture_name && <span className="text-slate-500">{r.fixture_name}</span>}
+            {r.source === "tenant" && <span className="chip bg-blue-50 text-blue-700">임차인 요청</span>}
             <span className="ml-auto text-xs text-slate-500">접수 {r.reported_on}</span>
           </div>
           <p className="mt-1 text-sm">{r.description}</p>

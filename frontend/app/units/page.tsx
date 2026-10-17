@@ -1,10 +1,11 @@
 "use client";
 
-import { Calculator, ClipboardList, DoorOpen, LogOut, Plus, Undo2 } from "lucide-react";
+import { Calculator, ClipboardList, DoorOpen, Link2, LogOut, Plus, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, todayKst, won } from "@/lib/api";
 import { useMe } from "@/lib/me";
+import TenantLink from "./TenantLink";
 
 interface LeaseH {
   lease_id: string; tenant_name: string; status: "active" | "ended" | "draft"; start_date: string; end_date: string | null;
@@ -25,6 +26,7 @@ export default function UnitsPage() {
   const [ending, setEnding] = useState<string | null>(null);
   const [letting, setLetting] = useState<string | null>(null);
   const [checking, setChecking] = useState<string | null>(null);
+  const [linking, setLinking] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try { setUnits(await api<UnitH[]>("/api/v1/lease-history")); }
@@ -94,11 +96,15 @@ export default function UnitsPage() {
                             <button type="button" className="btn-secondary btn-sm" aria-expanded={checking === l.lease_id}
                               onClick={() => setChecking(checking === l.lease_id ? null : l.lease_id)}>
                               <ClipboardList className="h-3.5 w-3.5" />법정 체크</button>
+                            <button type="button" className="btn-secondary btn-sm" aria-expanded={linking === l.lease_id}
+                              onClick={() => setLinking(linking === l.lease_id ? null : l.lease_id)}>
+                              <Link2 className="h-3.5 w-3.5" />임차인 링크</button>
                             <button type="button" className="btn-secondary btn-sm" onClick={() => { setEnding(l.lease_id); setLetting(null); }}>
                               <LogOut className="h-3.5 w-3.5" />계약 종료</button>
                           </div>
                         ))}
                         {checking === l.lease_id && l.status === "active" && <Checklist leaseId={l.lease_id} canWrite={canWrite} />}
+                        {linking === l.lease_id && l.status === "active" && <TenantLink leaseId={l.lease_id} unitNo={u.unit_no} canWrite={canWrite} />}
                         {canWrite && lastEnded?.lease_id === l.lease_id && (
                           <button type="button" className="btn-secondary btn-sm mt-1.5" disabled={busy}
                             onClick={() => window.confirm(`${u.unit_no}호 ${l.tenant_name} 계약 종료를 되돌릴까요? 종료 때 면제한 청구도 되살아납니다.`)

@@ -360,7 +360,7 @@ def list_repairs(session: Session, organization_id: uuid.UUID, *, status: str | 
              "fixture_id": str(t.fixture_id) if t.fixture_id else None, "fixture_name": fname,
              "fixture_category": fcat, "description": t.description, "reported_on": t.reported_on,
              "status": t.status, "completed_on": t.completed_on, "vendor": t.vendor, "cost": t.cost,
-             "payer": t.payer, "note": t.note}
+             "payer": t.payer, "note": t.note, "source": t.source}
             for t, unit_no, fname, fcat in session.execute(q).all()]
 
 

@@ -17,7 +17,8 @@ from tests.conftest import PASSWORD
 PUBLIC = {"/api/v1/health", "/api/v1/internal/cron/daily", "/api/v1/auth/signup", "/api/v1/auth/login", "/api/v1/auth/logout",
           "/api/v1/auth/verify-email", "/api/v1/auth/password-reset/request", "/api/v1/auth/password-reset/confirm",
           "/api/v1/auth/invitation/preview", "/api/v1/auth/invitation/accept", "/api/v1/auth/signup-status",
-          "/api/v1/bank-alerts/hook/{token}"}  # 계좌별 비밀 토큰으로 보호 (test_bank_alerts)
+          "/api/v1/bank-alerts/hook/{token}",  # 계좌별 비밀 토큰으로 보호 (test_bank_alerts)
+          "/api/v1/tenant/{token}", "/api/v1/tenant/{token}/repairs"}  # 계약별 초대 링크로 보호 (test_tenant_portal)
 
 
 def _signup(c, **kw):

@@ -153,3 +153,48 @@ test("월간 보고서: 장부 값 그대로 한 장 요약 → 엑셀 내려받
   await expect(page.getByRole("button", { name: "인쇄·PDF" })).toBeHidden();
   await expect(page.getByText("2026-09 운영 보고서")).toBeVisible();
 });
+
+test("임차인 링크: 만들기 → 임차인 화면(로그인 없음) → 수리 요청 → 관리자 확인 → 링크 끄기", async ({ page, browser }) => {
+  const org = await signupAndOnboard(page);
+  await api(page, "POST", `/api/v1/charges/generate?organization_id=${org}&period=2026-11`);
+  await page.goto("/units");
+  const unit = page.locator("section.card").filter({ has: page.getByRole("heading", { name: "101호" }) });
+  await unit.getByRole("button", { name: "임차인 링크" }).click();
+  await unit.getByRole("button", { name: "링크 만들기" }).click();
+  const url = await unit.getByLabel(/임차인 링크/).inputValue();
+  expect(url).toMatch(/\/t\/[\w-]{40,}$/);
+
+  // 임차인: 로그인 없는 새 브라우저, 휴대폰 폭
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const tenant = await ctx.newPage();
+  const errors: string[] = [];
+  tenant.on("pageerror", (e) => errors.push(e.message));
+  tenant.on("console", (m) => { if (m.type() === "error" && !/status of 4\d\d/.test(m.text())) errors.push(m.text()); });
+  await tenant.goto(url);
+  await expect(tenant.getByRole("heading", { name: "101호" })).toBeVisible();
+  await expect(tenant.getByText("매월 1일 · 월세 450,000원")).toBeVisible();
+  await expect(tenant.getByText("입금 확인 전").first()).toBeVisible();  // '미납'이라고 쓰지 않음
+  await expect(tenant.getByText(/임차인[A-H]|미납/)).toHaveCount(0);  // 이름·독촉 표현 없음
+  await expect(tenant.getByRole("link", { name: /대시보드|로그인/ })).toHaveCount(0);  // 관리자 메뉴 없음
+  await noOverflow(tenant);
+  await tenant.getByLabel("어디가 어떻게 고장 났나요?").fill("보일러 온수가 안 나와요");
+  await tenant.getByRole("button", { name: "수리 요청 보내기" }).click();
+  await expect(tenant.getByText("집주인에게 보냈습니다.")).toBeVisible();
+  await expect(tenant.locator("li").filter({ hasText: "보일러 온수가 안 나와요" }).getByText("처리 중")).toBeVisible();
+
+  // 관리자: 홈 알림과 수리 목록
+  await page.goto("/");
+  await expect(page.getByText(/임차인 수리 요청 1건 \(101\)/)).toBeVisible();
+  await page.goto("/assets?tab=repairs");
+  await expect(page.locator("li.card").filter({ hasText: "보일러 온수가 안 나와요" }).getByText("임차인 요청")).toBeVisible();
+
+  // 링크 끄기 → 임차인 화면은 안내만
+  await page.goto("/units");
+  await unit.getByRole("button", { name: "임차인 링크" }).click();
+  await unit.getByRole("button", { name: "링크 끄기" }).click();
+  await expect(unit.getByText("링크를 껐습니다.")).toBeVisible();
+  await tenant.reload();
+  await expect(tenant.getByText(/링크가 만료되었거나/)).toBeVisible();
+  expect(errors, "임차인 화면 오류").toEqual([]);
+  await ctx.close();
+});
