@@ -29,7 +29,7 @@ Vercel Cron   ── 매일 03시대 KST ──▶ ②API: DB 깨우기 + 암호
 ## 0단계. 코드를 main 에 합치기 (1분)
 
 Vercel·GitHub Actions 는 **main** 브랜치를 배포합니다.
-[PR #1](https://github.com/coba8002-code/Oneroom/pull/1) → **Ready for review** → **Merge pull request** → **Confirm merge**
+열려 있는 [PR](https://github.com/coba8002-code/Oneroom/pulls)이 있으면 → **Ready for review** → **Merge pull request** → **Confirm merge** (없으면 건너뜀)
 
 ## 1단계. 비밀값 4개 만들기 (3분)
 
@@ -74,7 +74,7 @@ console.log("ROOMAX_BACKUP_PASSPHRASE=" + hex(16)); console.log("CRON_SECRET=" +
    - Name: `ROOMAX_DATABASE_URL`
    - Secret: 2-5 의 **Session pooler(5432)** 주소
 2. **Actions** 탭 → 왼쪽 **DB migrate (Supabase)** → **Run workflow** → Run
-3. 1분 뒤 초록 체크 ✅ — 로그 끝에 `0008 (head)` 가 보이면 끝
+3. 1분 뒤 초록 체크 ✅ — 로그 끝에 가장 최근 버전(예: `0016 (head)`)이 보이면 끝
 
 이후에는 마이그레이션이 main 에 들어올 때마다 자동으로 돕니다. (로그에는 버전 이름만 나오고 주소·비밀번호는 나오지 않습니다)
 
