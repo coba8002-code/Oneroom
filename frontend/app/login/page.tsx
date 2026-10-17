@@ -1,10 +1,10 @@
 "use client";
 
 import { KeyRound, Loader2, LogIn } from "lucide-react";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import AuthFrame from "@/components/AuthFrame";
-import { api } from "@/lib/api";
+import { api, signupOpen } from "@/lib/api";
 
 function safeNext(next: string | null) {
   // 열린 리다이렉트 방지: 우리 사이트 안의 경로만
@@ -19,6 +19,8 @@ function LoginForm() {
   const [needOtp, setNeedOtp] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [canSignup, setCanSignup] = useState(true);
+  useEffect(() => { signupOpen().then((o) => setCanSignup(o !== false)); }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -72,7 +74,7 @@ function LoginForm() {
       </button>
       <div className="flex justify-between text-sm text-slate-500">
         <a href="/forgot-password" className="hover:text-slate-700 hover:underline">비밀번호를 잊으셨나요?</a>
-        <span>처음이신가요? <a href="/signup" className="font-semibold text-blue-600 hover:underline">회원가입</a></span>
+        {canSignup && <span>처음이신가요? <a href="/signup" className="font-semibold text-blue-600 hover:underline">회원가입</a></span>}
       </div>
     </form>
   );

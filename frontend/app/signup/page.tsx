@@ -1,9 +1,9 @@
 "use client";
 
 import { Check, Loader2, UserPlus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AuthFrame from "@/components/AuthFrame";
-import { api } from "@/lib/api";
+import { api, signupOpen } from "@/lib/api";
 
 function Rule({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   return (
@@ -18,6 +18,8 @@ export default function SignupPage() {
   const [agree, setAgree] = useState({ terms: false, privacy: false, marketing: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState<boolean | null>(null);
+  useEffect(() => { signupOpen().then(setOpen); }, []);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF((v) => ({ ...v, [k]: e.target.value }));
 
   const longEnough = f.password.length >= 10;
@@ -49,6 +51,19 @@ export default function SignupPage() {
   }
 
   const box = "h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500";
+  if (open === false) {
+    return (
+      <AuthFrame title="회원가입" sub="이 서버는 개인 사용 모드입니다.">
+        <div className="space-y-4">
+          <p className="rounded-xl bg-slate-100 p-4 text-sm text-slate-700" role="status">
+            사업장 대표가 이미 가입해 새 가입은 받지 않습니다. 함께 쓰려면 대표에게 초대를 요청하고,
+            초대 메일의 링크로 참여하세요.
+          </p>
+          <a href="/login" className="btn-primary w-full py-3">로그인</a>
+        </div>
+      </AuthFrame>
+    );
+  }
   return (
     <AuthFrame title="회원가입" sub="가입하면 내 사업장이 만들어지고, 바로 건물·호실을 등록할 수 있습니다.">
       <form onSubmit={submit} className="space-y-4">

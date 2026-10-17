@@ -154,6 +154,23 @@ npm run dev                     # http://localhost:3000/onboarding
   (cron 예시는 설정 화면에). 백업 폴더는 다른 디스크·외부 저장소로 한 번 더 복사 권장
 - 대시보드는 백업한 적이 없거나 30일이 지나면 알려줌
 
+## 알림·메시지 (`/notifications`) — 알림톡은 향후 연결
+
+- **월세 고지**(그 달 청구마다, 이미 낸 호실 제외)와 **미납 안내** 초안을 만들고, 관리자가 내용을 확인·수정해 **승인**해야 보낼 수 있음
+- **미납 안내 초안은 세 조건이 모두 있을 때만**: 관리자가 정한 유예기간 경과 + 은행 내역이 유예기간 끝까지 반영 + 입금 검토 대기 없음
+  (PRD §4 자동 독촉 금지). 조건이 안 되면 만들지 않고 호실별 이유를 보여줌
+- **유예기간·문구는 관리자가 화면에서 정함** — 기본값 없음. 문구에 `{임차인}` `{호실}` `{청구월}` `{금액}` `{납부일}` `{미납액}` `{경과일}` 칸
+- **알림톡 연결 전**: 승인한 문구를 복사해 문자·카톡으로 직접 보내고 '보냄으로 표시' (기록: 승인 시각·보낸 시각·방법)
+- **연결할 때**: `backend/app/services/messaging.py` 에 업체 구현을 등록하고 `ROOMAX_ALIMTALK_PROVIDER`·`_API_KEY`·`_SENDER_KEY` 설정 →
+  승인과 동시에 발송, 실패하면 이유를 남기고 직접 보냄으로 처리 가능
+
+## 개인 사용 모드
+
+- `ROOMAX_SIGNUP_MODE=first_only`(배포 기본값): 처음 가입한 한 명만 대표, 이후 가입 화면은 닫히고 멤버는 초대로만.
+  `ROOMAX_OWNER_EMAIL` 로 첫 대표 이메일을 고정할 수 있음
+- 메일 업체 없이 운영 가능 — 비밀번호를 잊으면 서버에서 `python -m app.admin_cli reset-link <이메일>` 로 재설정 링크 생성
+- 무료 서버 안내(Oracle Cloud Always Free 서울 + DuckDNS): [deploy/README.md](./deploy/README.md) 0장
+
 ## 운영 배포 (`deploy/`)
 
 서버 1대에 `docker compose up -d --build` — Caddy(HTTPS 자동 발급·갱신) · 화면 · API · PostgreSQL · 정기 백업.
@@ -169,7 +186,7 @@ npm run dev                     # http://localhost:3000/onboarding
 
 - 데스크톱: 남색 사이드바 + 카드형 대시보드 / 모바일: 상단 바 + 하단 탭(홈·임대료·운영비·계약·더보기)
 - 글꼴 Pretendard(로컬 번들), 아이콘 lucide-react, 공통 스타일은 `frontend/app/globals.css` 의 `.card` `.btn-primary` `.field` 등
-- 아직 없는 메뉴(알림·메시지, 세무, 전월세 시뮬레이션, 보고서)는 **'준비 중'** 으로만 표시
+- 아직 없는 메뉴(세무, 전월세 시뮬레이션, 보고서)는 **'준비 중'** 으로만 표시
 
 ## 다음 단계
 

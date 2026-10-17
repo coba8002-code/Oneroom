@@ -101,6 +101,8 @@ def _me(session: Session, user: User) -> dict:
                  "email_verified": user.email_verified_at is not None,
                  "marketing_agreed": user.marketing_agreed_at is not None},
         "organization": {"id": str(org.id), "name": org.name},
+        # 운영 서버인데 메일이 file 모드(개인 사용)면 확인 메일이 실제로 가지 않는다 → 화면은 확인 안내를 띄우지 않음
+        "mail_enabled": not (settings.env == "production" and settings.mail_mode == "file"),
     }
 
 
@@ -141,10 +143,24 @@ def _log(session: Session, user: User, action: str, detail: dict | None = None) 
     session.add(AuditLog(user_id=user.id, action=action, entity_type="user", entity_id=str(user.id), detail=detail))
 
 
+def signup_open(session: Session) -> bool:
+    """개인 사용 모드(first_only)는 아직 아무 계정도 없을 때만 가입을 받는다."""
+    return settings.signup_mode != "first_only" or session.scalar(select(User.id).limit(1)) is None
+
+
+@router.get("/signup-status")
+def signup_status(session: Session = Depends(get_session)) -> dict:
+    return {"open": signup_open(session), "mode": settings.signup_mode}
+
+
 @router.post("/signup", status_code=201)
 def signup(body: SignupIn, request: Request, response: Response, background: BackgroundTasks,
            session: Session = Depends(get_session)) -> dict:
+    if not signup_open(session):
+        raise HTTPException(403, "이 서버는 개인 사용 모드라 새 가입을 받지 않습니다. 사업장 대표에게 초대를 요청하세요")
     email = body.email.strip().lower()
+    if settings.signup_mode == "first_only" and settings.owner_email and email != settings.owner_email:
+        raise HTTPException(403, "이 서버는 정해진 대표 이메일로만 처음 가입할 수 있습니다")
     if not EMAIL_RE.match(email):
         raise HTTPException(422, "이메일 형식이 올바르지 않습니다")
     if not (body.agree_terms and body.agree_privacy):

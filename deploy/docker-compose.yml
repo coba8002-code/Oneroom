@@ -31,7 +31,11 @@ services:
       ROOMAX_COOKIE_SECURE: "true"
       ROOMAX_APP_URL: https://${SITE_ADDRESS:?SITE_ADDRESS 를 .env 에 넣으세요}
       ROOMAX_CORS_ORIGINS: https://${SITE_ADDRESS}
-      ROOMAX_MAIL_MODE: smtp
+      # 개인 사용(기본): 처음 한 명만 가입, 메일은 선택 (없으면 /data/mail_outbox 에 저장 + admin_cli reset-link)
+      # 상용(누구나 가입): ROOMAX_SIGNUP_MODE=open + ROOMAX_MAIL_MODE=smtp
+      ROOMAX_SIGNUP_MODE: ${ROOMAX_SIGNUP_MODE:-first_only}
+      ROOMAX_OWNER_EMAIL: ${ROOMAX_OWNER_EMAIL:-}
+      ROOMAX_MAIL_MODE: ${ROOMAX_MAIL_MODE:-file}
     volumes:
       - app_data:/data  # 암호화된 계약서 원본 · 복구 직전 안전 백업
     depends_on:

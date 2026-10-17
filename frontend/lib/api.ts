@@ -334,6 +334,17 @@ export interface Me {
   user: { id: string; email: string; name: string | null; role: "owner" | "manager" | "viewer"; mfa_enabled: boolean;
     email_verified: boolean; marketing_agreed: boolean };
   organization: { id: string; name: string };
+  mail_enabled?: boolean;  // false = 개인 사용 서버라 메일을 보내지 않음 → 확인 안내 숨김
 }
 
 export const ROLE_LABEL: Record<Me["user"]["role"], string> = { owner: "대표", manager: "관리자", viewer: "조회" };
+
+/** 가입을 받는지 (개인 사용 모드면 첫 대표 가입 뒤 닫힘). 확인 전·실패 시 null */
+export async function signupOpen(): Promise<boolean | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/auth/signup-status`, { credentials: "include" });
+    return res.ok ? ((await res.json()) as { open: boolean }).open : null;
+  } catch {
+    return null;
+  }
+}

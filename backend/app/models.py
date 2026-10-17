@@ -355,17 +355,34 @@ class TaxCase(Base):
 # ── 메시지·유지보수·감사 ─────────────────────────────────────
 
 class Notification(Base):
-    """approved_at 없이 발송하지 않는다."""
+    """임차인에게 보낼 메시지. approved_at 없이 발송하지 않는다 (자동 독촉 금지 — PRD §4).
+    알림톡이 연결되기 전에는 승인 후 문구를 복사해 직접 보내고 '직접 보냄'으로 표시한다."""
     __tablename__ = "notifications"
     id: Mapped[uuid.UUID] = pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tenants.id"))
+    lease_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("leases.id"))
+    charge_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("charges.id"), index=True)
     channel: Mapped[str] = mapped_column(String(20))  # sms | alimtalk
-    template: Mapped[str] = mapped_column(String(100))
-    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | approved | sent | failed
+    template: Mapped[str] = mapped_column(String(100))  # rent_notice | overdue_notice
+    body: Mapped[str | None] = mapped_column(Text)  # 만들 때 채운 문구 (초안에서 고칠 수 있음)
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | approved | sent | failed | discarded
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_via: Mapped[str | None] = mapped_column(String(20))  # manual | 알림톡 업체 이름
+    error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
+
+
+class NotificationSetting(Base):
+    """사업장별 알림 설정. 유예기간·문구는 관리자가 정한다 (기본값 없음 — 비어 있으면 그 알림은 만들지 않음)."""
+    __tablename__ = "notification_settings"
+    id: Mapped[uuid.UUID] = pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), unique=True)
+    grace_days: Mapped[int | None] = mapped_column(Integer)
+    rent_template: Mapped[str | None] = mapped_column(Text)
+    overdue_template: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class MaintenanceTicket(Base):

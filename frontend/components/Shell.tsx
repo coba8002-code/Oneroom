@@ -33,7 +33,7 @@ const NAV: NavItem[] = [
   { href: "/contracts", label: "계약 관리", icon: FileText },
   { href: "/payments", label: "임대료 관리", icon: Wallet },
   { href: "/expenses", label: "지출·운영비", icon: Receipt },
-  { href: null, label: "알림·메시지", icon: Bell },
+  { href: "/notifications", label: "알림·메시지", icon: Bell },
   { href: null, label: "세무 관리", icon: Landmark },
   { href: null, label: "전월세 시뮬레이션", icon: Calculator },
   { href: null, label: "보고서", icon: FileBarChart },
@@ -213,7 +213,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
       <main className="min-w-0 flex-1 px-4 pb-24 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
         <div className="mx-auto max-w-[1400px]">
-          {!me.user.email_verified && <VerifyBanner email={me.user.email} />}
+          {!me.user.email_verified && me.mail_enabled !== false && <VerifyBanner email={me.user.email} />}
           {children}
         </div>
       </main>

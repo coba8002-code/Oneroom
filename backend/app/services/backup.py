@@ -36,13 +36,13 @@ MAGIC = b"ROOMAXBK"
 FILE_VERSION = 1
 FORMAT = 1
 # 백업을 만든 DB 스키마. 마이그레이션을 추가하면 같이 올린다 (test_backup 이 alembic head 와 비교)
-SCHEMA_REVISION = "0007"
+SCHEMA_REVISION = "0008"
 MIN_PASSPHRASE = 8
 KST = ZoneInfo("Asia/Seoul")
 MAX_BACKUP_BYTES = 300_000_000
 
 # 조직 기준으로 테이블을 고르는 방법. 새 테이블을 만들면 반드시 여기나 EXCLUDED 에 추가 (test_backup 이 검사)
-ORG_COLUMN = ("properties", "tenants", "bank_accounts", "assets", "tax_cases", "notifications",
+ORG_COLUMN = ("properties", "tenants", "bank_accounts", "assets", "tax_cases", "notifications", "notification_settings",
               "payer_aliases", "expense_rules", "expenses")
 CHILDREN = (  # (테이블, 외래키 열, 부모 테이블)
     ("units", "property_id", "properties"),

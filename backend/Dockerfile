@@ -2,7 +2,7 @@
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
-    ROOMAX_UPLOAD_DIR=/data/uploads ROOMAX_BACKUP_DIR=/data/backups
+    ROOMAX_UPLOAD_DIR=/data/uploads ROOMAX_BACKUP_DIR=/data/backups ROOMAX_MAIL_OUTBOX_DIR=/data/mail_outbox
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

@@ -17,13 +17,73 @@
 | `db` | 밖으로 포트를 열지 않음 |
 | `backup` | `backup_cli` 를 매일 실행. 사업장마다 최근 30개, 해지된 사업장 백업은 30일 뒤 삭제 |
 
+## 0. 지금 단계: 혼자 쓰는 무료 서버 (개인 사용 모드)
+
+상용화 전까지는 **운영자 혼자** 씁니다. 기본값이 그렇게 돼 있습니다.
+
+| 설정 | 기본값 | 뜻 |
+|---|---|---|
+| `ROOMAX_SIGNUP_MODE` | `first_only` | 처음 가입한 한 명만 대표. 그 뒤 가입 화면은 닫히고, 멤버는 초대로만 |
+| `ROOMAX_OWNER_EMAIL` | (비움) | **내 이메일을 넣어 두면** 서버를 켠 뒤 남이 먼저 가입해 대표가 되는 일을 막음 — 권장 |
+| `ROOMAX_MAIL_MODE` | `file` | 메일 업체 없이 운영. 비밀번호를 잊으면 서버에서 재설정 링크를 만듦 (아래) |
+
+### 무료 서버 — Oracle Cloud Always Free (서울) 권장
+
+조사일 2026-10-17 기준입니다. 조건은 예고 없이 바뀔 수 있어 가입할 때 한 번 더 확인하세요.
+
+- 이 구성(docker compose · PostgreSQL · 파일 저장)을 **무료로, 국내 리전에서** 돌릴 수 있는 곳은 사실상 Oracle Always Free 뿐입니다.
+  (Render·Koyeb·Fly.io 무료는 영구 디스크·DB 만료 문제, GCP 무료는 미국 리전·메모리 1GB, AWS 는 6개월 크레딧)
+- 2026년에 A1(ARM) 무료 한도가 **2 OCPU · 메모리 12GB** 로 줄었습니다 → 이 안에서 만드세요. 디스크는 합계 200GB.
+- **홈 리전은 가입 후 못 바꿉니다** → 가입할 때 `South Korea Central (Seoul)` 을 고르세요. 신용카드가 필요합니다.
+- **혼자 가끔 쓰는 서버는 '유휴'로 보고 회수될 수 있습니다** (7일간 CPU·네트워크·메모리 사용률이 낮으면).
+  계정을 **Pay As You Go 로 전환**하면 회수 대상에서 빠지고, 무료 한도 안에서는 요금이 나오지 않습니다 —
+  **예산 알림(예: 1달러)** 을 꼭 걸어 두세요.
+- A1 생성 시 "Out of host capacity" 가 나오면 시간을 두고 다시 시도합니다.
+
+순서:
+
+1. Oracle Cloud 가입(홈 리전 서울) → Pay As You Go 전환 → 예산 알림 설정
+2. 인스턴스 만들기: Ubuntu 24.04, 형태 `VM.Standard.A1.Flex` 2 OCPU · 12GB, 공인 IP 할당
+3. 네트워크: VCN 보안 목록(Security List)에 TCP 80 · 443 수신 허용. Oracle Ubuntu 이미지는 서버 안 방화벽(iptables)도 막혀 있으므로
+   ```bash
+   sudo iptables -I INPUT 6 -p tcp -m multiport --dports 80,443 -j ACCEPT && sudo netfilter-persistent save
+   ```
+4. 무료 주소: [DuckDNS](https://www.duckdns.org) 에서 `내이름.duckdns.org` 를 만들고 서버 공인 IP 를 넣습니다
+5. Docker 설치 후 이 저장소를 받아 `.env` 작성 (아래 2장) — `SITE_ADDRESS=내이름.duckdns.org`, `ROOMAX_OWNER_EMAIL=내 이메일`
+6. `docker compose up -d --build` → 브라우저에서 `https://내이름.duckdns.org/signup` 으로 **바로 가입** (ARM 서버라 이미지도 서버에서 ARM 용으로 빌드됩니다)
+7. 백업 파일을 집 PC·클라우드 드라이브로 주기적으로 복사 (4장) — 무료 서버는 사라질 수 있다고 보고 대비합니다
+
+### 비밀번호를 잊었을 때 (메일 없이)
+
+```bash
+cd ~/roomax/deploy
+docker compose exec api python -m app.admin_cli reset-link 내이메일@example.com
+# 출력된 https://…/reset-password?token=… 링크를 브라우저에 붙여 새 비밀번호 설정 (1시간, 한 번만)
+```
+
+### 메일을 실제로 보내고 싶으면 (선택, 무료)
+
+Gmail 계정에 2단계 인증을 켜고 **앱 비밀번호**를 만든 뒤 `.env` 에:
+`ROOMAX_MAIL_MODE=smtp`, `ROOMAX_SMTP_HOST=smtp.gmail.com`, `ROOMAX_SMTP_PORT=587`, `ROOMAX_SMTP_USER=내gmail`,
+`ROOMAX_SMTP_PASSWORD=앱비밀번호`, `ROOMAX_MAIL_FROM=ROOMAX <내gmail>`. 개인 계정은 하루 약 500통까지라 혼자 쓰기엔 충분합니다.
+
+### 상용화할 때 바꿀 것
+
+`ROOMAX_SIGNUP_MODE=open`(누구나 가입) → 이때는 SMTP 메일이 **필수**(설정이 없으면 서버가 시작하지 않음), 유료·안정적인 서버,
+처리방침의 처리 위탁(서버·메일 업체명)과 `frontend/lib/legal.ts` 운영자 정보 기재, 약관·처리방침 변호사 검토.
+
+### 대안: 집 PC + Tailscale
+
+서버 없이 집 PC 에서 돌리고 휴대폰은 Tailscale(개인 무료)로 접속하는 방법도 있습니다. 데이터가 인터넷에 공개되지 않는 장점이 있지만
+PC 를 계속 켜 둬야 합니다. 원하시면 이 방식의 설치 안내를 따로 만듭니다.
+
 ## 1. 준비
 
 1. **서버**: Linux(Ubuntu 22.04/24.04 등) 1대, 메모리 2GB 이상, Docker Engine + Compose 플러그인 설치
    - 임차인 개인정보가 저장되므로 **국내 리전**을 권장합니다 (국외 리전이면 처리방침에 국외 이전 고지가 필요)
    - 방화벽에서 **80, 443(TCP·UDP)** 만 엽니다. SSH 는 관리자 IP 로 제한
 2. **도메인**: DNS A 레코드(필요하면 AAAA)를 서버 IP 로. 인증서 발급 전에 반영돼 있어야 합니다
-3. **메일 발송 계정 (SMTP)**: 이메일 확인·비밀번호 재설정에 필수. 업체를 정하면
+3. **메일 발송 계정 (SMTP)**: 누구나 가입(`open`)하는 상용 서버에서는 필수 (개인 사용은 0장 참고). 업체를 정하면
    - 처리방침 '처리 위탁'에 업체명을 적고 (`frontend/app/privacy/page.tsx`)
    - 보내는 도메인에 SPF·DKIM 을 설정해야 스팸함으로 덜 갑니다
 
