@@ -8,7 +8,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models import Charge, Deposit, Lease, Payment, Property, Tenant, Transaction, TransactionAllocation, Unit
-from app.services import backup, fixtures, lease_renewal, lease_rules, ledger, receivables, reports, tax_calendar
+from app.services import (backup, fixtures, lease_renewal, lease_rules, ledger, receivables, reports, routines,
+                          tax_calendar)
 from app.services.charges import due_date_for
 from app.services.expenses import kst_date
 from app.services.matching import org_transactions
@@ -216,6 +217,15 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
             add("info", "lease_ending", f"{unit} 계약 {when}{dep}.", "/expenses")
     if open_repairs := fixtures.open_repair_count(session, organization_id):
         add("info", "repair_open", f"진행 중인 수리 {open_repairs}건.", "/assets")
+    late, soon = routines.due(session, organization_id, as_of)
+    where = lambda r: f"{r['unit_no']}호 " if r["unit_no"] else ""  # noqa: E731
+    if late:
+        names = ", ".join(f"{where(r)}{r['title']}" for r in late[:3]) + (f" 외 {len(late) - 3}건" if len(late) > 3 else "")
+        add("warn", "routine_overdue", f"예정일이 지난 정기 점검 {len(late)}건: {names}.", "/assets?tab=routine")
+    if soon:
+        names = ", ".join(f"{where(r)}{r['title']} {r['next_due_on']:%m-%d}" for r in soon[:3]) \
+            + (f" 외 {len(soon) - 3}건" if len(soon) > 3 else "")
+        add("info", "routine_soon", f"{routines.SOON_DAYS}일 안 정기 점검 {len(soon)}건: {names}.", "/assets?tab=routine")
     for le, due, late in lease_rules.report_reminders(session, [le for le, _ in leases.values()], as_of):
         unit_no = next(u.unit_no for u in units if u.id == le.unit_id)
         add("warn", "lease_report", f"{unit_no} 임대차 신고 기한 {due:%Y-%m-%d}" + (" 이 지났습니다" if late else " 입니다")

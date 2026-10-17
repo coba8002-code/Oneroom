@@ -4,6 +4,7 @@ import { Download, Package, PackageMinus, Pencil, Plus, Trash2, Wrench, Calendar
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, apiFetch, todayKst, won, type UnitOut } from "@/lib/api";
 import { useMe } from "@/lib/me";
+import RoutineTab from "./RoutineTab";
 
 interface Codes { categories: Record<string, string>; owners: Record<string, string>; payers: Record<string, string> }
 interface Fixture {
@@ -22,7 +23,7 @@ interface Plan {
   from: string; to: string; unplanned: number; warranty_ending: Fixture[];
   groups: { month: string; category: string; category_label: string; count: number; units: string[]; models: string[] }[];
 }
-type Tab = "fixtures" | "repairs" | "plan";
+type Tab = "fixtures" | "repairs" | "routine" | "plan";
 const json = (method: string, body?: unknown) => ({ method,
   ...(body !== undefined ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}) });
 const age = (m: number | null) => (m == null ? "—" : m < 12 ? `${m}개월` : `${Math.floor(m / 12)}년${m % 12 ? ` ${m % 12}개월` : ""}`);
@@ -34,6 +35,11 @@ export default function AssetsPage() {
   const canWrite = me?.user.role !== "viewer";
   const orgId = me?.organization.id;
   const [tab, setTab] = useState<Tab>("fixtures");
+  const [routineDue, setRoutineDue] = useState<number | null>(null);
+  useEffect(() => {  // 홈 알림에서 /assets?tab=routine 으로 바로
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t === "routine" || t === "repairs" || t === "plan") setTab(t);
+  }, []);
   const [codes, setCodes] = useState<Codes | null>(null);
   const [units, setUnits] = useState<UnitOut[]>([]);
   const [items, setItems] = useState<Fixture[] | null>(null);
@@ -48,12 +54,13 @@ export default function AssetsPage() {
   const load = useCallback(async () => {
     if (!orgId) return;
     try {
-      const [c, u, f, r, p] = await Promise.all([
+      const [c, u, f, r, p, rt] = await Promise.all([
         api<Codes>("/api/v1/fixture-codes"), api<UnitOut[]>(`/api/v1/units?organization_id=${orgId}`),
         api<Fixture[]>(`/api/v1/fixtures?include_removed=${showRemoved}`), api<Repair[]>("/api/v1/repairs"),
-        api<Plan>("/api/v1/fixtures/replacement-plan"),
+        api<Plan>("/api/v1/fixtures/replacement-plan"), api<{ state: string }[]>("/api/v1/routine-tasks"),
       ]);
       setCodes(c); setUnits(u); setItems(f); setRepairs(r); setPlan(p);
+      setRoutineDue(rt.filter((x) => x.state === "overdue" || x.state === "soon").length);
     } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
   }, [orgId, showRemoved]);
   useEffect(() => { load(); }, [load]);
@@ -79,14 +86,14 @@ export default function AssetsPage() {
   const openRepairs = repairs?.filter((r) => r.status === "open").length ?? 0;
   const TABS: [Tab, string, number | null][] = [
     ["fixtures", "자산대장", items?.filter((i) => i.status === "in_use").length ?? null],
-    ["repairs", "수리 이력", openRepairs || null], ["plan", "교체 계획", null]];
+    ["repairs", "수리 이력", openRepairs || null], ["routine", "정기 점검", routineDue || null], ["plan", "교체 계획", null]];
 
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="page-title">자산·수리</h1>
-          <p className="page-sub">호실 옵션·집기와 건물 공용 설비, 수리 기록을 한곳에. 옵션과 임차인 소유를 나눠 두면 퇴실·수리 책임 다툼이 줄어듭니다.</p>
+          <p className="page-sub">호실 옵션·집기와 건물 공용 설비, 수리 기록, 정기 점검을 한곳에. 옵션과 임차인 소유를 나눠 두면 퇴실·수리 책임 다툼이 줄어듭니다.</p>
         </div>
         <button type="button" className="btn-secondary" onClick={download}><Download className="h-4 w-4" />엑셀(CSV) 내려받기</button>
       </header>
@@ -142,6 +149,7 @@ export default function AssetsPage() {
         </>
       )}
 
+      {tab === "routine" && <RoutineTab units={units} fixtures={items ?? []} canWrite={canWrite} onCount={setRoutineDue} />}
       {tab === "plan" && <PlanView plan={plan} />}
     </div>
   );

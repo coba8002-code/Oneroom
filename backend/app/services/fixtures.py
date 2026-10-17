@@ -19,7 +19,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import AuditLog, Fixture, MaintenanceTicket, Property, Unit
+from app.models import AuditLog, Fixture, MaintenanceTicket, Property, RoutineTask, Unit
 
 CATEGORIES = {
     "aircon": "에어컨", "washer": "세탁기", "fridge": "냉장고", "cooktop": "인덕션·가스레인지",
@@ -160,6 +160,8 @@ def delete_fixture(session: Session, f: Fixture, user_id) -> None:
     """잘못 넣은 품목 지우기. 수리 기록이 있으면 지우지 않고 '빼기'로 처리하게 한다."""
     if session.scalar(select(MaintenanceTicket.id).where(MaintenanceTicket.fixture_id == f.id).limit(1)):
         raise FixtureError("수리 기록이 있는 품목은 지울 수 없습니다. '빼기'로 처리하세요")
+    if session.scalar(select(RoutineTask.id).where(RoutineTask.fixture_id == f.id).limit(1)):
+        raise FixtureError("정기 점검이 걸린 품목은 지울 수 없습니다. '빼기'로 처리하세요")
     _audit(session, user_id, "fixture.delete", "fixture", f.id, {"category": f.category})
     session.delete(f)
     session.commit()
