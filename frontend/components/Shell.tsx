@@ -7,7 +7,7 @@ import {
   Building2,
   Calculator,
   ClipboardCheck,
-  FileBarChart,
+  DoorOpen,
   FileText,
   House,
   Landmark,
@@ -32,15 +32,15 @@ type NavItem = { href: string | null; label: string; icon: LucideIcon };
 const NAV: NavItem[] = [
   { href: "/", label: "대시보드", icon: LayoutDashboard },
   { href: "/onboarding", label: "건물·호실 등록", icon: Building2 },
+  { href: "/units", label: "호실·계약", icon: DoorOpen },
   { href: "/contracts", label: "계약 관리", icon: FileText },
   { href: "/move-out", label: "입주·퇴실", icon: ClipboardCheck },
   { href: "/payments", label: "임대료 관리", icon: Wallet },
   { href: "/expenses", label: "지출·운영비", icon: Receipt },
   { href: "/notifications", label: "알림·메시지", icon: Bell },
   { href: "/assets", label: "자산·수리", icon: Package },
-  { href: null, label: "세무 관리", icon: Landmark },
-  { href: null, label: "전월세 시뮬레이션", icon: Calculator },
-  { href: null, label: "보고서", icon: FileBarChart },
+  { href: "/tax", label: "세무 준비", icon: Landmark },
+  { href: "/simulate", label: "전월세 시뮬레이션", icon: Calculator },
   { href: "/settings", label: "설정", icon: Settings },
 ];
 

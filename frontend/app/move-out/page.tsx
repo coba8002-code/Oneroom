@@ -334,6 +334,8 @@ function SettlementView({ s, codes, leaseId, canWrite, busy, run, moveOut }: {
           {s.note && <p className="mt-2 text-xs text-slate-600">메모: {s.note}</p>}
         </div>
         {s.warnings.length > 0 && <ul className="mt-3 space-y-1 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{s.warnings.map((w) => <li key={w}>• {w}</li>)}</ul>}
+        {s.status === "confirmed" && canWrite && <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900 print:hidden">
+          정산서를 확정했습니다. 퇴거가 끝났으면 <a href="/units" className="font-semibold underline">호실·계약</a>에서 계약을 종료하세요 — 공실로 바뀌고 다음 달 청구에서 빠집니다.</p>}
         <p className="mt-3 text-xs text-slate-500">실제로 돌려준 기록은 지출·운영비에서 은행 출금을 &lsquo;보증금 반환&rsquo;으로 확정할 때 남습니다. 은행 내역 {s.bank_data_as_of ? kst(s.bank_data_as_of) : "—"}까지.</p>
         {canWrite && <div className="mt-3 flex flex-wrap gap-2 print:hidden">
           {s.status === "draft" ? (

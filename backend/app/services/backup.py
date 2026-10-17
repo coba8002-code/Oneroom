@@ -34,7 +34,7 @@ MAGIC = b"ROOMAXBK"
 FILE_VERSION = 1
 FORMAT = 1
 # 백업을 만든 DB 스키마. 마이그레이션을 추가하면 같이 올린다 (test_backup 이 alembic head 와 비교)
-SCHEMA_REVISION = "0011"
+SCHEMA_REVISION = "0013"
 MIN_PASSPHRASE = 8
 KST = ZoneInfo("Asia/Seoul")
 MAX_BACKUP_BYTES = 300_000_000
@@ -55,12 +55,14 @@ CHILDREN = (  # (테이블, 외래키 열, 부모 테이블)
     ("inspection_photos", "item_id", "inspection_items"),
     ("move_out_settlements", "lease_id", "leases"),
     ("settlement_deductions", "settlement_id", "move_out_settlements"),
+    ("lease_checks", "lease_id", "leases"),
+    ("expense_receipts", "expense_id", "expenses"),
     ("transactions", "bank_account_id", "bank_accounts"),
     ("transaction_allocations", "transaction_id", "transactions"),
     ("payments", "charge_id", "charges"),
 )
 # 파일(services/storage)을 가리키는 테이블 — 백업 zip 의 files/ 에 원본을 담고, 복구·해지 때 같이 옮기고 지운다
-FILE_TABLES = ("lease_documents", "inspection_photos")
+FILE_TABLES = ("lease_documents", "inspection_photos", "expense_receipts")
 COVERED = {"organizations", "audit_logs", *ORG_COLUMN, *(c[0] for c in CHILDREN)}
 # 계정 정보(비밀번호 해시·세션·MFA 키)는 백업에 넣지 않는다 — 데이터가 아니라 로그인 수단
 EXCLUDED = {"users", "auth_sessions", "email_tokens", "invitations"}

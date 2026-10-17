@@ -166,6 +166,9 @@ class Lease(Base):
     rent: Mapped[int] = mapped_column(BigInteger, default=0)  # 관리비 포함 월세
     due_day: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), default="active")  # active | ended | draft
+    signed_on: Mapped[date | None] = mapped_column(Date)  # 계약 체결일 (임대차 신고 기한 30일의 기준). 모르면 비움
+    ended_on: Mapped[date | None] = mapped_column(Date)  # 실제로 계약이 끝난 날 (퇴거일). 계약서의 만료일과 다를 수 있음
+    end_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
 
 
@@ -503,6 +506,33 @@ class SettlementDeduction(Base):
     disputed: Mapped[bool] = mapped_column(Boolean, default=False)
     inspection_item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("inspection_items.id"))
     note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class LeaseCheck(Base):
+    """계약 법정 체크 항목의 처리 기록 (정보 제시·납세증명서·임대차 신고). done: 했음 | na: 해당 없음."""
+    __tablename__ = "lease_checks"
+    __table_args__ = (UniqueConstraint("lease_id", "key"),
+                      CheckConstraint("status IN ('done', 'na')", name="ck_lease_checks_status"))
+    id: Mapped[uuid.UUID] = pk()
+    lease_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leases.id"), index=True)
+    key: Mapped[str] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(10))
+    done_on: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class ExpenseReceipt(Base):
+    """지출 증빙(영수증·세금계산서 사진·PDF). 파일은 암호화 보관(services/storage), 백업에 포함."""
+    __tablename__ = "expense_receipts"
+    id: Mapped[uuid.UUID] = pk()
+    expense_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("expenses.id"), index=True)
+    file_path: Mapped[str] = mapped_column(String(64))
+    content_type: Mapped[str] = mapped_column(String(50))
+    size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    original_name: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = created_at()
 
 

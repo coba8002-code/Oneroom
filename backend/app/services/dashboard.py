@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models import Charge, Deposit, Lease, Payment, Property, Tenant, Transaction, TransactionAllocation, Unit
-from app.services import backup, fixtures, lease_renewal, ledger, receivables, reports, tax_calendar
+from app.services import backup, fixtures, lease_renewal, lease_rules, ledger, receivables, reports, tax_calendar
 from app.services.charges import due_date_for
 from app.services.expenses import kst_date
 from app.services.matching import org_transactions
@@ -190,6 +190,20 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
             add("info", "lease_ending", f"{unit} 계약 {when}{dep}.", "/expenses")
     if open_repairs := fixtures.open_repair_count(session, organization_id):
         add("info", "repair_open", f"진행 중인 수리 {open_repairs}건.", "/assets")
+    for le, due, late in lease_rules.report_reminders(session, [le for le, _ in leases.values()], as_of):
+        unit_no = next(u.unit_no for u in units if u.id == le.unit_id)
+        add("warn", "lease_report", f"{unit_no} 임대차 신고 기한 {due:%Y-%m-%d}" + (" 이 지났습니다" if late else " 입니다")
+            + " (보증금 6천만 원 초과 또는 월세 30만 원 초과). 신고했거나 대상 지역이 아니면 호실·계약에서 표시하세요.", "/units")
+    # 종료된 계약이라도 보증금을 돌려주기 전까지는 부채 — 계속 알린다
+    for unit_no, amount, ended_on in session.execute(
+            select(Unit.unit_no, func.sum(Deposit.amount), Lease.ended_on)
+            .join(Lease, Deposit.lease_id == Lease.id).join(Unit, Lease.unit_id == Unit.id)
+            .join(Property, Unit.property_id == Property.id)
+            .where(Property.organization_id == organization_id, Lease.status == "ended",
+                   Deposit.received_at.is_not(None), Deposit.returned_at.is_(None))
+            .group_by(Unit.unit_no, Lease.id, Lease.ended_on).order_by(Unit.unit_no)):
+        add("warn", "deposit_unreturned_ended",
+            f"{unit_no} 계약이 {ended_on:%Y-%m-%d}에 끝났는데 보증금 {int(amount):,}원을 돌려준 기록이 없습니다.", "/expenses")
     last_backup = backup.last_backup_at(session, organization_id)
     if last_backup is None:
         add("info", "backup_none", "아직 백업한 적이 없습니다. 설정에서 백업 파일을 내려받아 두세요.", "/settings")
