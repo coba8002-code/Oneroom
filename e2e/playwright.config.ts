@@ -3,6 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 // 화면(3000) + API(8000) 를 실제로 띄워 브라우저로 처음부터 끝까지 확인한다.
 // DB 는 ROOMAX_DATABASE_URL (CI: postgres 서비스). 화면은 미리 빌드해 둘 것 (npm run build, ROOMAX_API_ORIGIN 같게).
 const PY = process.env.E2E_PYTHON ?? "python";
+// 서비스 워커가 하는 요청도 route 로 가로채게 (PWA 연결 끊김 시험). Playwright 1.49 Chromium 의 실험 옵션
+process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = "1";
 const API = "http://127.0.0.1:8000";
 
 export default defineConfig({

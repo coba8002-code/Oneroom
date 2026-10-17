@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>연결 끊김 — ROOMAX</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f8fafc; color: #0f172a;
+    font-family: "Pretendard", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  main { max-width: 22rem; padding: 1.5rem; text-align: center; }
+  h1 { font-size: 1.25rem; margin: .75rem 0 .5rem; }
+  p { color: #475569; font-size: .9rem; line-height: 1.6; margin: 0 0 1rem; }
+  button { background: #172d4f; color: #fff; border: 0; border-radius: .75rem; padding: .7rem 1.2rem; font-size: .95rem; cursor: pointer; }
+  img { width: 56px; height: 56px; border-radius: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <img src="/icons/icon-192.png" alt="">
+  <h1>인터넷에 연결되어 있지 않습니다</h1>
+  <p>장부는 서버에만 있어 연결이 없을 때는 보여 드리지 않습니다 (지난 화면을 보여 주면 이미 바뀐 숫자를 사실처럼 볼 수 있기 때문입니다).
+     연결되면 다시 열어 주세요.</p>
+  <button type="button" onclick="location.reload()">다시 시도</button>
+</main>
+</body>
+</html>
