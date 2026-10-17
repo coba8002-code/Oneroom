@@ -188,7 +188,7 @@ def state(t: RoutineTask, as_of: date, has_log: bool) -> str:
 
 
 def list_tasks(session: Session, organization_id: uuid.UUID, as_of: date, include_stopped: bool = False) -> list[dict]:
-    q = (select(RoutineTask, Unit.unit_no, Fixture.name)
+    q = (select(RoutineTask, Unit.label, Fixture.name)
          .join(Property, RoutineTask.property_id == Property.id)
          .outerjoin(Unit, RoutineTask.unit_id == Unit.id)
          .outerjoin(Fixture, RoutineTask.fixture_id == Fixture.id)

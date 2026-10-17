@@ -1,4 +1,4 @@
-import { api, expect, importBank, noOverflow, sampleBank, signupAndOnboard, test } from "./helpers";
+import { api, expect, importBank, noOverflow, SAMPLES, sampleBank, signupAndOnboard, test } from "./helpers";
 
 // 날짜가 고정된 샘플(2026-11 은행 내역)로 돌린다 — 화면은 '기준일'을 바꿔 그 날짜로 본다
 
@@ -99,4 +99,27 @@ test("휴대폰 폭(390px)에서 주요 화면이 가로로 넘치지 않음", a
     await page.waitForLoadState("networkidle");
     await noOverflow(page);
   }
+});
+
+test("건물 두 동: 같은 통장을 함께 쓰고, 호실은 '건물 이름 + 호실'로 구분", async ({ page }) => {
+  const org = await signupAndOnboard(page);
+  await page.goto("/onboarding");
+  await page.getByLabel("건물 이름").fill("행복빌라 2동");
+  await expect(page.getByLabel("월세 받는 통장")).toHaveValue(/.+/);  // 기본: 기존 통장 함께 쓰기
+  await page.locator("input[type=file]").first().setInputFiles(`${SAMPLES}/onboarding_units.csv`);
+  await page.getByRole("button", { name: "등록", exact: true }).click();
+  await page.getByText("등록 완료").waitFor();
+  expect((await api(page, "GET", `/api/v1/bank-accounts?organization_id=${org}`)).length).toBe(1);
+
+  const labels = (await api(page, "GET", `/api/v1/units?organization_id=${org}`)).map((u: { unit_no: string }) => u.unit_no);
+  expect(labels).toContain("행복빌라 101");
+  expect(labels).toContain("행복빌라 2동 101");
+  await page.goto("/vacancy");
+  await expect(page.locator("li.card").filter({ hasText: "행복빌라 2동 203호" })).toBeVisible();
+
+  await page.goto("/onboarding");  // 같은 이름은 거절
+  await page.getByLabel("건물 이름").fill("행복빌라 2동");
+  await page.locator("input[type=file]").first().setInputFiles(`${SAMPLES}/onboarding_units.csv`);
+  await page.getByRole("button", { name: "등록", exact: true }).click();
+  await expect(page.getByText(/이미 '행복빌라 2동' 건물이 있습니다/)).toBeVisible();
 });

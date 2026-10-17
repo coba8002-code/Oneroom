@@ -249,7 +249,7 @@ def _inspection_out(session: Session, insp: Inspection | None) -> dict | None:
 
 def overview(session: Session, organization_id: uuid.UUID, lease_id: uuid.UUID) -> dict:
     lease = _lease(session, organization_id, lease_id)
-    unit_no, tenant = session.execute(select(Unit.unit_no, Tenant.name).join(Lease, Lease.unit_id == Unit.id)
+    unit_no, tenant = session.execute(select(Unit.label, Tenant.name).join(Lease, Lease.unit_id == Unit.id)
                                       .join(Tenant, Lease.tenant_id == Tenant.id).where(Lease.id == lease.id)).one()
     by_kind = {i.kind: i for i in session.scalars(select(Inspection).where(Inspection.lease_id == lease.id))}
     return {"lease": {"id": str(lease.id), "unit_no": unit_no, "tenant_name": tenant, "start_date": lease.start_date,
@@ -435,9 +435,9 @@ def _jsonable(v):
 def leases_for_move(session: Session, organization_id: uuid.UUID) -> list[dict]:
     """점검·정산 대상 계약 목록 (진행 중 계약 전부)과 점검·정산 상태."""
     rows = session.execute(
-        select(Lease, Unit.unit_no, Tenant.name).join(Unit, Lease.unit_id == Unit.id)
+        select(Lease, Unit.label, Tenant.name).join(Unit, Lease.unit_id == Unit.id)
         .join(Property, Unit.property_id == Property.id).join(Tenant, Lease.tenant_id == Tenant.id)
-        .where(Property.organization_id == organization_id).order_by(Unit.unit_no, Lease.start_date)).all()
+        .where(Property.organization_id == organization_id).order_by(Unit.label, Lease.start_date)).all()
     kinds: dict[uuid.UUID, set[str]] = {}
     for lid, kind in session.execute(select(Inspection.lease_id, Inspection.kind)
                                      .where(Inspection.lease_id.in_([r[0].id for r in rows]))):

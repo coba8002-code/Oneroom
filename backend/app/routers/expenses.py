@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/v1", tags=["expenses"])
 
 def _unit_map(session: Session, organization_id: uuid.UUID) -> dict[uuid.UUID, str]:
     return dict(session.execute(
-        select(Unit.id, Unit.unit_no).join(Property, Unit.property_id == Property.id)
+        select(Unit.id, Unit.label).join(Property, Unit.property_id == Property.id)
         .where(Property.organization_id == organization_id)).all())
 
 

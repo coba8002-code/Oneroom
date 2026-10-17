@@ -139,7 +139,7 @@ def new_lease(session: Session, organization_id: uuid.UUID, user_id, unit_id: uu
 def history(session: Session, organization_id: uuid.UUID) -> list[dict]:
     """호실별 계약 이력 (진행 중 + 종료). 공실 호실도 포함."""
     units = session.execute(select(Unit).join(Property, Unit.property_id == Property.id)
-                            .where(Property.organization_id == organization_id).order_by(Unit.unit_no)).scalars().all()
+                            .where(Property.organization_id == organization_id).order_by(Unit.label)).scalars().all()
     leases: dict[uuid.UUID, list] = {}
     for lease, name in session.execute(select(Lease, Tenant.name).join(Tenant, Lease.tenant_id == Tenant.id)
                                        .where(Lease.unit_id.in_([u.id for u in units]))
@@ -148,5 +148,5 @@ def history(session: Session, organization_id: uuid.UUID) -> list[dict]:
             "lease_id": str(lease.id), "tenant_name": name, "status": lease.status, "start_date": lease.start_date,
             "end_date": lease.end_date, "signed_on": lease.signed_on, "ended_on": lease.ended_on, "end_reason": lease.end_reason,
             "deposit": lease.deposit, "rent": lease.rent, "deposit_unreturned": _unreturned(session, lease.id)})
-    return [{"unit_id": str(u.id), "unit_no": u.unit_no, "use_type": u.use_type, "status": u.status,
+    return [{"unit_id": str(u.id), "unit_no": u.label, "use_type": u.use_type, "status": u.status,
              "leases": leases.get(u.id, [])} for u in units]

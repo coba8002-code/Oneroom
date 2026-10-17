@@ -10,6 +10,10 @@ import uuid
 from datetime import date, datetime, timezone
 
 from sqlalchemy import (
+    case,
+    func,
+    literal,
+    select,
     JSON,
     BigInteger,
     Boolean,
@@ -24,7 +28,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, column_property, mapped_column
 
 from app.crypto import EncryptedString
 
@@ -127,6 +131,15 @@ class Property(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+def _unit_label(property_id, unit_no):
+    own, sib = Property.__table__.alias("own"), Property.__table__.alias("sib")
+    org_id = select(own.c.organization_id).where(own.c.id == property_id).correlate_except(own).scalar_subquery()
+    buildings = (select(func.count()).select_from(sib).where(sib.c.organization_id == org_id)
+                 .correlate_except(sib).scalar_subquery())
+    name = select(own.c.name).where(own.c.id == property_id).correlate_except(own).scalar_subquery()
+    return case((buildings > 1, name + literal(" ") + unit_no), else_=unit_no)
+
+
 class Unit(Base):
     __tablename__ = "units"
     __table_args__ = (UniqueConstraint("property_id", "unit_no"),)
@@ -138,6 +151,9 @@ class Unit(Base):
     use_type: Mapped[str] = mapped_column(String(10))  # rental | owner
     status: Mapped[str] = mapped_column(String(20), default="vacant")  # occupied | vacant | owner
     created_at: Mapped[datetime] = created_at()
+
+    # 화면에 쓰는 호실 이름: 건물이 하나면 '101', 여러 동이면 '행복빌라 101' (건물 이름은 사업장 안에서 유일)
+    label: Mapped[str] = column_property(_unit_label(property_id, unit_no))
 
 
 # ── 임차인·계약 ──────────────────────────────────────────────

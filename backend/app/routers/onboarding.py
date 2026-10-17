@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.auth import Member, org_guard
 from app.db import get_session
 from app.schemas import CsvPreviewOut, OnboardingIn, OnboardingOut
-from app.services.onboarding import onboard, parse_onboarding_csv
+from app.services.onboarding import OnboardingError, onboard, parse_onboarding_csv
 
 router = APIRouter(prefix="/api/v1/onboarding", tags=["onboarding"])
 
@@ -17,6 +17,9 @@ def create(data: OnboardingIn, member: Member = Depends(org_guard),
            session: Session = Depends(get_session)) -> OnboardingOut:
     try:
         return onboard(session, member.organization_id, data)
+    except OnboardingError as e:
+        session.rollback()
+        raise HTTPException(409, str(e)) from e
     except IntegrityError:
         session.rollback()
         raise HTTPException(409, "이미 있는 데이터와 충돌합니다")

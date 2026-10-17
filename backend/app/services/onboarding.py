@@ -7,6 +7,7 @@ import uuid
 from datetime import date
 
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AuditLog, BankAccount, Deposit, Lease, Organization, Property, Tenant, Unit
@@ -30,12 +31,28 @@ CSV_COLUMNS = {
 USE_TYPE_LABELS = {"임대": "rental", "주인": "owner", "주인세대": "owner", "rental": "rental", "owner": "owner"}
 
 
+class OnboardingError(ValueError):
+    pass
+
+
 def onboard(session: Session, organization_id: uuid.UUID, data: OnboardingIn) -> OnboardingOut:
     """로그인한 사업장에 건물·호실·계약을 등록한다 (사업장은 회원가입 때 만들어짐)."""
     org = session.get(Organization, organization_id)
-    prop = Property(organization_id=org.id, **data.property.model_dump())
-    account = BankAccount(organization_id=org.id, alias=data.bank_account_alias)
-    session.add_all([prop, account])
+    # 건물이 여러 동이면 호실을 '건물 이름 + 호실'로 구분한다 → 사업장 안에서 건물 이름이 겹치면 안 됨
+    name = " ".join(data.property.name.split())
+    taken = {" ".join(n.split()) for n in session.scalars(
+        select(Property.name).where(Property.organization_id == org.id))}
+    if name in taken:
+        raise OnboardingError(f"이미 '{name}' 건물이 있습니다. 다른 이름을 쓰세요 (예: 행복빌라 2동)")
+    prop = Property(organization_id=org.id, **{**data.property.model_dump(), "name": name})
+    if data.bank_account_id is not None:
+        account = session.get(BankAccount, data.bank_account_id)
+        if account is None or account.organization_id != org.id:
+            raise OnboardingError("계좌를 찾을 수 없습니다")
+        session.add(prop)
+    else:
+        account = BankAccount(organization_id=org.id, alias=data.bank_account_alias)
+        session.add_all([prop, account])
     session.flush()
 
     leases = vacant = deposits_total = 0

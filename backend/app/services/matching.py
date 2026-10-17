@@ -60,12 +60,12 @@ class MatchError(ValueError):
 
 def active_leases(session: Session, organization_id: uuid.UUID) -> list[LeaseInfo]:
     rows = session.execute(
-        select(Lease, Unit.unit_no, Tenant.name)
+        select(Lease, Unit.label, Tenant.name)
         .join(Unit, Lease.unit_id == Unit.id)
         .join(Property, Unit.property_id == Property.id)
         .join(Tenant, Lease.tenant_id == Tenant.id)
         .where(Property.organization_id == organization_id, Lease.status == "active")
-        .order_by(Unit.unit_no)
+        .order_by(Unit.label)
     ).all()
     return [LeaseInfo(lease, unit_no, name) for lease, unit_no, name in rows]
 

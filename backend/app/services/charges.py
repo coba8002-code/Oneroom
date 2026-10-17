@@ -43,11 +43,11 @@ def generate_charges(
     """period 의 청구를 만든다. 반환: ([(charge, unit_no)], 이미 있던 건수)."""
     parse_period(period)
     rows = session.execute(
-        select(Lease, Unit.unit_no)
+        select(Lease, Unit.label)
         .join(Unit, Lease.unit_id == Unit.id)
         .join(Property, Unit.property_id == Property.id)
         .where(Property.organization_id == organization_id, Lease.status == "active")
-        .order_by(Unit.unit_no)
+        .order_by(Unit.label)
     ).all()
 
     existing = {

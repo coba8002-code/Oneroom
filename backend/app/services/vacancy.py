@@ -89,7 +89,7 @@ def _options(session: Session, unit_id: uuid.UUID) -> list[str]:
 def summary(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
     rows = session.execute(select(Unit, Property).join(Property, Unit.property_id == Property.id)
                            .where(Property.organization_id == organization_id, Unit.use_type == "rental",
-                                  Unit.status == "vacant").order_by(Unit.unit_no)).all()
+                                  Unit.status == "vacant").order_by(Unit.label)).all()
     units = []
     for unit, prop in rows:
         prev = _previous_lease(session, unit.id)
@@ -100,7 +100,7 @@ def summary(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
         if since:
             acts = [a for a in acts if a.happened_on >= since]  # 이번 공실 기간 것만 센다
         units.append({
-            "unit_id": unit.id, "unit_no": unit.unit_no, "floor": unit.floor,
+            "unit_id": unit.id, "unit_no": unit.label, "floor": unit.floor,
             "vacant_since": since, "days_vacant": (as_of - since).days if since and since <= as_of else None,
             "previous_rent": prev.rent if prev else None, "previous_deposit": prev.deposit if prev else None,
             "missed_due_dates": len(missed) if prev else None,
@@ -122,7 +122,7 @@ def detail(session: Session, organization_id: uuid.UUID, unit_id: uuid.UUID) -> 
                            .order_by(VacancyActivity.happened_on.desc(), VacancyActivity.created_at.desc())).all()
     options = _options(session, unit.id)
     return {
-        "unit_id": unit.id, "unit_no": unit.unit_no, "status": unit.status,
+        "unit_id": unit.id, "unit_no": unit.label, "status": unit.status,
         "listing": {"asking_deposit": listing.asking_deposit, "asking_rent": listing.asking_rent,
                     "available_on": listing.available_on, "note": listing.note} if listing else None,
         "options": options, "ad_text": ad_text(prop, unit, listing, options),

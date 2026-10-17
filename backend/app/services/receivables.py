@@ -31,14 +31,14 @@ def latest_transaction_at(session: Session, organization_id: uuid.UUID):
 
 def compute(session: Session, organization_id: uuid.UUID, as_of: date) -> ReceivablesOut:
     rows = session.execute(
-        select(Charge, Unit.unit_no, Tenant.name)
+        select(Charge, Unit.label, Tenant.name)
         .join(Lease, Charge.lease_id == Lease.id)
         .join(Unit, Lease.unit_id == Unit.id)
         .join(Property, Unit.property_id == Property.id)
         .join(Tenant, Lease.tenant_id == Tenant.id)
         .where(Property.organization_id == organization_id,
                Charge.status.in_(("open", "partial")), Charge.due_date <= as_of)
-        .order_by(Charge.due_date, Unit.unit_no)
+        .order_by(Charge.due_date, Unit.label)
     ).all()
     items = []
     for c, unit_no, name in rows:

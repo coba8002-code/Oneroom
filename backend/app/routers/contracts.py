@@ -23,11 +23,11 @@ def ocr_settings() -> OcrSettingsOut:
 @router.get("/contracts", response_model=list[ContractOut])
 def list_contracts(organization_id: uuid.UUID, session: Session = Depends(get_session)) -> list[ContractOut]:
     rows = session.execute(
-        select(Lease, Unit.unit_no, Tenant.name)
+        select(Lease, Unit.label, Tenant.name)
         .join(Unit, Lease.unit_id == Unit.id).join(Property, Unit.property_id == Property.id)
         .join(Tenant, Lease.tenant_id == Tenant.id)
         .where(Property.organization_id == organization_id, Lease.status == "active")
-        .order_by(Unit.unit_no)).all()
+        .order_by(Unit.label)).all()
     docs: dict[uuid.UUID, list[LeaseDocument]] = {}
     for d in session.scalars(select(LeaseDocument).where(
             LeaseDocument.lease_id.in_([lease.id for lease, _, _ in rows])).order_by(LeaseDocument.created_at)):
@@ -43,7 +43,7 @@ def list_contracts(organization_id: uuid.UUID, session: Session = Depends(get_se
 
 def _out(session: Session, doc: LeaseDocument) -> DocumentOut:
     lease = session.get(Lease, doc.lease_id)
-    unit_no = session.scalar(select(Unit.unit_no).where(Unit.id == lease.unit_id))
+    unit_no = session.scalar(select(Unit.label).where(Unit.id == lease.unit_id))
     j = doc.ocr_json or {}
     return DocumentOut(
         id=doc.id, lease_id=doc.lease_id, unit_no=unit_no, original_name=doc.original_name,

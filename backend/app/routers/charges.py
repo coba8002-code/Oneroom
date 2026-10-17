@@ -37,12 +37,12 @@ def list_charges(
     except ValueError as e:
         raise HTTPException(422, str(e))
     rows = session.execute(
-        select(Charge, Unit.unit_no)
+        select(Charge, Unit.label)
         .join(Lease, Charge.lease_id == Lease.id)
         .join(Unit, Lease.unit_id == Unit.id)
         .join(Property, Unit.property_id == Property.id)
         .where(Property.organization_id == organization_id, Charge.period == period)
-        .order_by(Charge.due_date, Unit.unit_no)
+        .order_by(Charge.due_date, Unit.label)
     ).all()
     return [_out(c, unit_no) for c, unit_no in rows]
 

@@ -79,7 +79,7 @@ def render(template: str, ctx: dict[str, str]) -> str:
 
 
 def _charges(session: Session, organization_id: uuid.UUID):
-    return (select(Charge, Lease, Unit.unit_no, Tenant)
+    return (select(Charge, Lease, Unit.label, Tenant)
             .join(Lease, Charge.lease_id == Lease.id).join(Unit, Lease.unit_id == Unit.id)
             .join(Property, Unit.property_id == Property.id).join(Tenant, Lease.tenant_id == Tenant.id)
             .where(Property.organization_id == organization_id))
@@ -170,10 +170,10 @@ def make_renewal_notices(session: Session, organization_id: uuid.UUID, as_of: da
     if not cfg.renewal_template:
         raise NotifyError("계약 만료 안내 문구를 먼저 정하세요 (알림 설정)")
     rows = session.execute(
-        select(Lease, Unit.unit_no, Tenant).join(Unit, Lease.unit_id == Unit.id)
+        select(Lease, Unit.label, Tenant).join(Unit, Lease.unit_id == Unit.id)
         .join(Property, Unit.property_id == Property.id).join(Tenant, Lease.tenant_id == Tenant.id)
         .where(Property.organization_id == organization_id, Lease.status == "active")
-        .order_by(Unit.unit_no)).all()
+        .order_by(Unit.label)).all()
     created, skipped = 0, []
     for lease, unit_no, tenant in rows:
         if lease.end_date is None:
@@ -264,7 +264,7 @@ def discard(session: Session, n: Notification, user_id: uuid.UUID) -> Notificati
 
 def listing(session: Session, organization_id: uuid.UUID) -> list[dict]:
     rows = session.execute(
-        select(Notification, Tenant.name, Tenant.phone, Unit.unit_no, Charge.period)
+        select(Notification, Tenant.name, Tenant.phone, Unit.label, Charge.period)
         .outerjoin(Tenant, Notification.tenant_id == Tenant.id)
         .outerjoin(Lease, Notification.lease_id == Lease.id).outerjoin(Unit, Lease.unit_id == Unit.id)
         .outerjoin(Charge, Notification.charge_id == Charge.id)

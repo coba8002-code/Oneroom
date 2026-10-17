@@ -50,6 +50,7 @@ class UnitIn(BaseModel):
 class OnboardingIn(BaseModel):
     property: PropertyIn
     bank_account_alias: str = Field(default="주거래 통장", max_length=100)
+    bank_account_id: uuid.UUID | None = None  # 두 번째 건물부터: 이미 있는 계좌를 함께 쓰려면 지정 (비우면 새 계좌)
     units: list[UnitIn] = Field(min_length=1)
 
     @model_validator(mode="after")

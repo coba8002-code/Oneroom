@@ -127,10 +127,10 @@ def _month(session: Session, org: uuid.UUID, a: dict, today: date) -> dict:
 
 
 def _leases(session: Session, org: uuid.UUID, a: dict, today: date) -> list[dict]:
-    rows = session.execute(select(Lease, Unit.unit_no).join(Unit, Lease.unit_id == Unit.id)
+    rows = session.execute(select(Lease, Unit.label).join(Unit, Lease.unit_id == Unit.id)
                            .join(Property, Unit.property_id == Property.id)
                            .where(Property.organization_id == org, Lease.status == "active")
-                           .order_by(Unit.unit_no)).all()
+                           .order_by(Unit.label)).all()
     return [{"unit_no": u, "deposit": le.deposit, "rent": le.rent, "due_day": le.due_day,
              "start_date": le.start_date, "end_date": le.end_date} for le, u in rows]
 
