@@ -60,7 +60,7 @@ export default function AssetsPage() {
 
   async function run(fn: () => Promise<unknown>, ok: string, after?: () => void) {
     setBusy(true); setMsg(null);
-    try { await fn(); setMsg({ ok: true, text: ok }); after?.(); await load(); }
+    try { await fn(); after?.(); await load(); setMsg({ ok: true, text: ok }); }  // 화면을 새로 그린 뒤 알림
     catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
     finally { setBusy(false); }
   }

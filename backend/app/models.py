@@ -12,6 +12,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import (
     JSON,
     BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -433,6 +434,74 @@ class MaintenanceTicket(Base):
     vendor: Mapped[str | None] = mapped_column(String(100))
     cost: Mapped[int | None] = mapped_column(BigInteger)
     payer: Mapped[str] = mapped_column(String(20), default="undecided")  # 부담: landlord | tenant | undecided
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class Inspection(Base):
+    """입주·퇴실 점검. 계약마다 입주 1번, 퇴실 1번. 상태·계량기·사진을 남겨 퇴실 정산의 근거로 쓴다."""
+    __tablename__ = "inspections"
+    __table_args__ = (UniqueConstraint("lease_id", "kind"),
+                      CheckConstraint("kind IN ('move_in', 'move_out')", name="ck_inspections_kind"))
+    id: Mapped[uuid.UUID] = pk()
+    lease_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leases.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # move_in | move_out
+    inspected_on: Mapped[date] = mapped_column(Date)
+    tenant_confirmed_on: Mapped[date | None] = mapped_column(Date)  # 임차인과 함께 확인한 날
+    confirm_note: Mapped[str | None] = mapped_column(Text)  # 확인 방법 (예: 현장 동행, 사진 문자 전송)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class InspectionItem(Base):
+    """점검 항목 하나 (방·벽지·바닥·옵션 품목·계량기 등). 상태를 모르면 비워 둔다."""
+    __tablename__ = "inspection_items"
+    id: Mapped[uuid.UUID] = pk()
+    inspection_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("inspections.id"), index=True)
+    fixture_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fixtures.id"))
+    area: Mapped[str] = mapped_column(String(50))
+    condition: Mapped[str | None] = mapped_column(String(20))  # good | worn | dirty | damaged | missing
+    reading: Mapped[str | None] = mapped_column(String(30))  # 계량기 숫자 (글자 그대로)
+    note: Mapped[str | None] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = created_at()
+
+
+class InspectionPhoto(Base):
+    """점검 사진. 파일은 계약서처럼 암호화해 보관 (services/storage). 올린 시각(UTC)이 증빙 시각."""
+    __tablename__ = "inspection_photos"
+    id: Mapped[uuid.UUID] = pk()
+    item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("inspection_items.id"), index=True)
+    file_path: Mapped[str] = mapped_column(String(64))
+    content_type: Mapped[str] = mapped_column(String(50))
+    size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = created_at()
+
+
+class MoveOutSettlement(Base):
+    """퇴실 정산서. 확정하면 그때 숫자를 남겨 두고(스냅숏) 공제 항목을 잠근다. 실제 반환은 은행 출금 '보증금 반환'."""
+    __tablename__ = "move_out_settlements"
+    id: Mapped[uuid.UUID] = pk()
+    lease_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leases.id"), unique=True)
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | confirmed
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    snapshot: Mapped[dict | None] = mapped_column(JSON)  # 확정 때 계산 결과
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class SettlementDeduction(Base):
+    """보증금에서 뺄 항목 (관리자가 적음). 다툼이 있는 금액(disputed)은 먼저 돌려줄 금액에서 빼고 따로 보관."""
+    __tablename__ = "settlement_deductions"
+    __table_args__ = (CheckConstraint("amount >= 0", name="ck_settlement_deductions_amount"),)
+    id: Mapped[uuid.UUID] = pk()
+    settlement_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("move_out_settlements.id"), index=True)
+    category: Mapped[str] = mapped_column(String(20))  # damage | cleaning | utility | other
+    label: Mapped[str] = mapped_column(String(100))
+    amount: Mapped[int] = mapped_column(BigInteger)
+    disputed: Mapped[bool] = mapped_column(Boolean, default=False)
+    inspection_item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("inspection_items.id"))
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
 
