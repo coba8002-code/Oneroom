@@ -6,6 +6,7 @@
 - 보여 주는 것: 그 계약의 호실·기간·월세·납부일·보증금, 최근 청구와 '확인된' 입금, 그 계약 기간에 임차인이 요청한 수리
   · 장부 값만. 입금이 확인되지 않은 청구는 '미납'이 아니라 '입금 확인 전' — 은행 내역 반영 시각을 같이 보여 준다 (자동 독촉 금지)
   · 다른 호실·이전 임차인·관리자 메모·비용 부담·연락처는 넣지 않는다
+- 관리자가 쓴 공지(게시 기간 안)와 집주인 연락처(관리자가 넣은 것만)도 보여 준다
 - 임차인이 할 수 있는 일은 수리 요청뿐 (하루 횟수 제한). 요청은 수리 이력에 '임차인 요청'으로 들어가고 관리자가 처리한다
 """
 from __future__ import annotations
@@ -19,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AuditLog, Charge, Deposit, Lease, MaintenanceTicket, Property, TenantLink, Unit
-from app.services import ledger, receivables
+from app.services import ledger, receivables, tenant_notices
 
 DAYS = (30, 90, 180, 365)  # 관리자가 고르는 유효 기간
 CHARGE_MONTHS = 12
@@ -149,6 +150,9 @@ def view(session: Session, link: TenantLink, lease: Lease, today: date, now: dat
         "bank_data_as_of": receivables.latest_transaction_at(session, prop.organization_id),
         "repairs": [{"reported_on": t.reported_on, "description": t.description, "status": t.status,
                      "completed_on": t.completed_on} for t in _requests(session, lease)],
+        "notices": tenant_notices.for_unit(session, unit, today),
+        "contact": {"phone": prop.contact_phone, "note": prop.contact_note} if prop.contact_phone or prop.contact_note
+        else None,
         "link_expires_at": link.expires_at,
         "notice": NOTE,
     }

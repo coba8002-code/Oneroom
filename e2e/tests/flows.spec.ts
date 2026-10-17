@@ -94,7 +94,7 @@ test("AI 비서: 키가 없으면 '연결 안 됨' 안내만, 질문 칸은 잠�
 test("휴대폰 폭(390px)에서 주요 화면이 가로로 넘치지 않음", async ({ page }) => {
   await signupAndOnboard(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ["/", "/payments", "/expenses", "/units", "/assets", "/vacancy", "/move-out", "/tax", "/reports", "/settings", "/assistant", "/certificate"]) {
+  for (const path of ["/", "/payments", "/expenses", "/units", "/assets", "/vacancy", "/move-out", "/tax", "/reports", "/settings", "/assistant", "/certificate", "/tenant-notices"]) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     await noOverflow(page);
@@ -222,4 +222,39 @@ test("월세 납부 확인서: 확정된 월세 입금만 → 인쇄 화면", as
   await expect(page.getByRole("button", { name: "인쇄·PDF" })).toBeHidden();
   await expect(page.getByText(/검토 대기 4건/)).toBeHidden();
   await expect(paper.getByText("월세 납부 확인서")).toBeVisible();
+});
+
+test("임차인 공지·연락처: 공지 올리기·연락처 저장 → 임차인 화면에 보임 → 지우면 사라짐", async ({ page, browser }) => {
+  const org = await signupAndOnboard(page);
+  await page.goto("/tenant-notices");
+  await page.getByLabel("제목").fill("12/20(토) 물탱크 청소");
+  await page.getByLabel("내용 (선택)").fill("10~12시 단수됩니다");
+  await page.getByRole("button", { name: "공지 올리기" }).click();
+  await expect(page.getByText("공지를 올렸습니다.")).toBeVisible();
+  await page.getByLabel("보낼 곳").selectOption({ label: "102호만" });
+  await page.getByLabel("제목").fill("102호 보일러 점검 방문");
+  await page.getByRole("button", { name: "공지 올리기" }).click();
+  await expect(page.getByText("공지 2건")).toBeVisible();
+  await page.getByLabel("전화번호").fill("010-1234-5678");
+  await page.getByLabel("안내 (선택)").fill("평일 9~18시");
+  await page.getByRole("button", { name: "연락처 저장" }).click();
+  await expect(page.getByText("연락처를 저장했습니다.")).toBeVisible();
+
+  const lease = (await api(page, "GET", `/api/v1/leases?organization_id=${org}`)).find((x: { unit_no: string }) => x.unit_no === "101");
+  const { path } = await api(page, "POST", `/api/v1/leases/${lease.lease_id}/tenant-link`, { days: 90 });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const tenant = await ctx.newPage();
+  await tenant.goto(path);
+  const notices = tenant.locator("section[aria-labelledby=notices]");
+  await expect(notices.getByText("12/20(토) 물탱크 청소")).toBeVisible();
+  await expect(notices.getByText("102호 보일러 점검 방문")).toHaveCount(0);  // 다른 호실 공지는 안 보임
+  await expect(tenant.getByRole("link", { name: "010-1234-5678" })).toHaveAttribute("href", "tel:01012345678");
+  await noOverflow(tenant);
+
+  await page.locator("li").filter({ hasText: "12/20(토) 물탱크 청소" }).getByRole("button", { name: /지우기/ }).click();
+  await expect(page.getByText("공지를 지웠습니다.")).toBeVisible();
+  await tenant.reload();
+  await expect(tenant.getByRole("heading", { name: "101호" })).toBeVisible();
+  await expect(tenant.locator("section[aria-labelledby=notices]")).toHaveCount(0);
+  await ctx.close();
 });

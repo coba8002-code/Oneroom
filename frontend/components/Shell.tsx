@@ -23,6 +23,7 @@ import {
   DoorClosed,
   Bot,
   FileBarChart,
+  Megaphone,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -41,6 +42,7 @@ const NAV: NavItem[] = [
   { href: "/payments", label: "임대료 관리", icon: Wallet },
   { href: "/expenses", label: "지출·운영비", icon: Receipt },
   { href: "/notifications", label: "알림·메시지", icon: Bell },
+  { href: "/tenant-notices", label: "임차인 공지", icon: Megaphone },
   { href: "/vacancy", label: "공실 관리", icon: DoorClosed },
   { href: "/assets", label: "자산·수리", icon: Package },
   { href: "/reports", label: "월간 보고서", icon: FileBarChart },

@@ -128,6 +128,9 @@ class Property(Base):
     name: Mapped[str] = mapped_column(String(200))
     type: Mapped[str] = mapped_column(String(30))  # multi_household | apartment | rural_house
     address: Mapped[str | None] = mapped_column(String(500))
+    # 임차인 화면에 보이는 집주인(관리인) 연락처 — 관리자가 넣은 것만. 저장 시 암호화
+    contact_phone: Mapped[str | None] = mapped_column(EncryptedString())
+    contact_note: Mapped[str | None] = mapped_column(String(200))  # 예: 평일 9~18시, 급한 누수는 언제든
     created_at: Mapped[datetime] = created_at()
 
 
@@ -645,6 +648,19 @@ class TenantLink(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at()
+
+
+class TenantNotice(Base):
+    """임차인 화면 공지 — 건물 전체(unit_id 없음) 또는 한 호실. 게시 기간 안에만 보인다. 자동 발송하지 않음."""
+    __tablename__ = "tenant_notices"
+    id: Mapped[uuid.UUID] = pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id"), index=True)
+    unit_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units.id"), index=True)
+    title: Mapped[str] = mapped_column(String(100))
+    body: Mapped[str | None] = mapped_column(Text)
+    starts_on: Mapped[date] = mapped_column(Date)
+    ends_on: Mapped[date | None] = mapped_column(Date)  # 없으면 지울 때까지
     created_at: Mapped[datetime] = created_at()
 
 
