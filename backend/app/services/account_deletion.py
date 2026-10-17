@@ -43,7 +43,7 @@ def delete_member(session: Session, user: User) -> None:
 def delete_organization(session: Session, organization_id: uuid.UUID) -> dict:
     """사업장 해지: 업무 데이터·계정·파일을 모두 지운다. 지운 건수를 돌려준다."""
     rows = backup.collect(session, organization_id)
-    files = [d["file_path"] for d in rows["lease_documents"]]
+    files = backup.file_names(rows)
     user_ids = list(session.scalars(select(User.id).where(User.organization_id == organization_id)))
 
     counts: dict[str, int] = {}
@@ -66,7 +66,7 @@ def delete_organization(session: Session, organization_id: uuid.UUID) -> dict:
                          entity_id=str(organization_id), detail={"deleted": counts, "files": len(files)}))
     session.commit()
 
-    # 커밋 뒤 파일 정리: 계약서 원본, 복구 직전 안전 백업
+    # 커밋 뒤 파일 정리: 계약서 원본·점검 사진, 복구 직전 안전 백업
     for name in files:
         storage.delete(name)
     safety = backup.safety_backups(organization_id)

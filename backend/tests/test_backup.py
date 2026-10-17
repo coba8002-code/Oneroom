@@ -53,6 +53,14 @@ def rich(client, onboarded):
     doc = client.post(f"/api/v1/leases/{lease}/documents", params=_p(org), files={"file": ("c.png", PNG)}).json()
     client.post(f"/api/v1/documents/{doc['id']}/verify", params=_p(org), json={
         "deposit": 5_000_000, "rent": 470_000, "due_day": 3, "start_date": "2025-03-01", "end_date": "2027-02-28"})
+    # 자산대장·수리 이력 (호실 품목 + 건물 공용)
+    units = {u["unit_no"]: u["unit_id"] for u in client.get("/api/v1/units", params=_p(org)).json()}
+    fx = client.post("/api/v1/fixtures", json={"category": "aircon", "brand": "LG", "manufactured": "2019-06",
+                                               "price": 650_000, "unit_ids": [units["101"]]}).json()
+    client.post("/api/v1/fixtures", json={"category": "cctv"})
+    client.post("/api/v1/repairs", json={"description": "냉매 보충", "fixture_id": fx["ids"][0], "cost": 80_000,
+                                         "reported_on": "2026-08-01", "completed_on": "2026-08-02", "payer": "landlord"})
+    client.post("/api/v1/repairs", json={"description": "복도 누수", "reported_on": "2026-09-01"})
     return onboarded
 
 
@@ -60,7 +68,8 @@ def _snapshot(session, org_id):
     """사업장 데이터 비교용. 사업장 행 자체와 사업장 id 는 빼고 비교 (다른 사업장으로 복구해도 같아야 함)."""
     rows = backup.collect(session, org_id)
     rows.pop("organizations")
-    rows["audit_logs"] = [r for r in rows["audit_logs"] if not r["action"].startswith("backup.")]
+    # 계정은 백업에 없어 복구하면 감사 기록의 사용자 연결이 끊긴다 (backup.restore) — 그 열은 비교하지 않음
+    rows["audit_logs"] = [{**r, "user_id": None} for r in rows["audit_logs"] if not r["action"].startswith("backup.")]
     text = json.dumps({k: sorted(([{c: backup._enc(v) for c, v in r.items()} for r in rs]), key=lambda r: r["id"])
                        for k, rs in rows.items()}, default=str)
     return json.loads(text.replace(str(org_id), "ORG"))
@@ -115,6 +124,7 @@ def test_round_trip_to_new_server_with_different_key(rich, session, monkeypatch,
     dash_before = _dash(session, org_id)
     blob, manifest = backup.export(session, org_id, PASS)
     assert manifest["counts"]["lease_documents"] == 1 and manifest["files"] == 1
+    assert manifest["counts"]["fixtures"] == 2 and manifest["counts"]["maintenance_tickets"] == 2
     assert b"010-0000" not in blob and PNG not in blob  # 연락처·계약서가 평문으로 보이지 않음
 
     # 새 서버: 빈 DB · 다른 암호화 키 · 다른 파일 저장소

@@ -23,5 +23,5 @@ def get_dashboard(organization_id: uuid.UUID, as_of: date | None = None,
 
 @router.get("/bank-accounts", response_model=list[BankAccountOut])
 def bank_accounts(organization_id: uuid.UUID, session: Session = Depends(get_session)) -> list[BankAccountOut]:
-    return [BankAccountOut(id=a.id, alias=a.alias) for a in session.scalars(
+    return [BankAccountOut(id=a.id, alias=a.alias, alert_since=a.alert_token_created_at) for a in session.scalars(
         select(BankAccount).where(BankAccount.organization_id == organization_id).order_by(BankAccount.created_at))]

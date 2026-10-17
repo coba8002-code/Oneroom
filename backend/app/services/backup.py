@@ -34,7 +34,7 @@ MAGIC = b"ROOMAXBK"
 FILE_VERSION = 1
 FORMAT = 1
 # 백업을 만든 DB 스키마. 마이그레이션을 추가하면 같이 올린다 (test_backup 이 alembic head 와 비교)
-SCHEMA_REVISION = "0008"
+SCHEMA_REVISION = "0014"
 MIN_PASSPHRASE = 8
 KST = ZoneInfo("Asia/Seoul")
 MAX_BACKUP_BYTES = 300_000_000
@@ -48,14 +48,29 @@ CHILDREN = (  # (테이블, 외래키 열, 부모 테이블)
     ("lease_documents", "lease_id", "leases"),
     ("deposits", "lease_id", "leases"),
     ("charges", "lease_id", "leases"),
-    ("maintenance_tickets", "unit_id", "units"),
+    ("fixtures", "property_id", "properties"),
+    ("maintenance_tickets", "property_id", "properties"),
+    ("inspections", "lease_id", "leases"),
+    ("inspection_items", "inspection_id", "inspections"),
+    ("inspection_photos", "item_id", "inspection_items"),
+    ("move_out_settlements", "lease_id", "leases"),
+    ("settlement_deductions", "settlement_id", "move_out_settlements"),
+    ("lease_checks", "lease_id", "leases"),
+    ("expense_receipts", "expense_id", "expenses"),
     ("transactions", "bank_account_id", "bank_accounts"),
+    ("bank_alerts", "bank_account_id", "bank_accounts"),
     ("transaction_allocations", "transaction_id", "transactions"),
     ("payments", "charge_id", "charges"),
 )
+# 파일(services/storage)을 가리키는 테이블 — 백업 zip 의 files/ 에 원본을 담고, 복구·해지 때 같이 옮기고 지운다
+FILE_TABLES = ("lease_documents", "inspection_photos", "expense_receipts")
 COVERED = {"organizations", "audit_logs", *ORG_COLUMN, *(c[0] for c in CHILDREN)}
 # 계정 정보(비밀번호 해시·세션·MFA 키)는 백업에 넣지 않는다 — 데이터가 아니라 로그인 수단
 EXCLUDED = {"users", "auth_sessions", "email_tokens", "invitations"}
+
+
+def file_names(rows: dict[str, list[dict]]) -> list[str]:
+    return [r["file_path"] for t in FILE_TABLES for r in rows.get(t, [])]
 
 
 class BackupError(ValueError):
@@ -167,17 +182,17 @@ def build(session: Session, organization_id: uuid.UUID, passphrase: str) -> tupl
             raw = json.dumps([{k: _enc(v) for k, v in r.items()} for r in data], ensure_ascii=False).encode()
             z.writestr(f"data/{name}.json", raw)
             checksums[f"data/{name}.json"] = _sha(raw)
-        for doc in rows["lease_documents"]:
-            raw = storage.load(doc["file_path"])
-            z.writestr(f"files/{doc['file_path']}", raw)
-            checksums[f"files/{doc['file_path']}"] = _sha(raw)
+        for name in file_names(rows):
+            raw = storage.load(name)
+            z.writestr(f"files/{name}", raw)
+            checksums[f"files/{name}"] = _sha(raw)
         manifest = {
             "format": FORMAT,
             "schema_revision": SCHEMA_REVISION,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "organization": {"id": str(org.id), "name": org.name},
             "counts": {name: len(data) for name, data in rows.items()},
-            "files": len(rows["lease_documents"]),
+            "files": len(file_names(rows)),
             "checksums": checksums,
         }
         z.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=1))
@@ -296,7 +311,7 @@ def restore(session: Session, blob: bytes, passphrase: str, target_org_id: uuid.
         safety = filename(safety_manifest, "pre-restore", full_id=True)
         blobs.store("backups").put(safety, safety_blob)
 
-        old_files = {d["file_path"] for d in current["lease_documents"]}
+        old_files = set(file_names(current))
         for table in reversed(Base.metadata.sorted_tables):
             if table.name in ("organizations", "audit_logs") or table.name in EXCLUDED:
                 continue  # 감사 기록은 되감지 않는다 (아래에서 빠진 것만 보탬)
@@ -309,9 +324,9 @@ def restore(session: Session, blob: bytes, passphrase: str, target_org_id: uuid.
 
     staged: list[str] = []
     try:
-        for doc in data.get("lease_documents", []):
-            storage.stage(doc["file_path"], z.read(f"files/{doc['file_path']}"))
-            staged.append(doc["file_path"])
+        for name in file_names(data):
+            storage.stage(name, z.read(f"files/{name}"))
+            staged.append(name)
         for table in Base.metadata.sorted_tables:
             rows = data.get(table.name)
             if rows:

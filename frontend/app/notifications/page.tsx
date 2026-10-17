@@ -9,16 +9,20 @@ interface NotifySettings {
   grace_days: number | null;
   rent_template: string | null;
   overdue_template: string | null;
+  renewal_template: string | null;
   variables: Record<string, string>;
+  renewal_variables: Record<string, string>;
   provider?: { connected: boolean; name: string | null };
 }
 interface Message {
-  id: string; kind: "rent_notice" | "overdue_notice"; status: "draft" | "approved" | "sent" | "failed";
-  body: string | null; tenant_name: string | null; phone: string | null; unit_no: string | null; period: string | null;
+  id: string; kind: "rent_notice" | "overdue_notice" | "renewal_notice"; status: "draft" | "approved" | "sent" | "failed";
+  body: string | null; tenant_name: string | null; phone: string | null; unit_no: string | null; period: string | null; lease_end: string | null;
   created_at: string; approved_at: string | null; sent_at: string | null; sent_via: string | null; error: string | null;
 }
 type Tab = "draft" | "approved" | "sent";
-const KIND = { rent_notice: "월세 고지", overdue_notice: "미납 안내" };
+const KIND = { rent_notice: "월세 고지", overdue_notice: "미납 안내", renewal_notice: "계약 만료 안내" };
+const KIND_TONE = { rent_notice: "bg-blue-50 text-blue-700", overdue_notice: "bg-orange-50 text-orange-800",
+  renewal_notice: "bg-indigo-50 text-indigo-700" };
 const TABS: [Tab, string][] = [["draft", "초안"], ["approved", "보낼 것"], ["sent", "보냄"]];
 const json = (method: string, body?: unknown) => ({ method,
   ...(body !== undefined ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}) });
@@ -57,7 +61,7 @@ export default function NotificationsPage() {
     <div className="space-y-6">
       <header>
         <h1 className="page-title">알림·메시지</h1>
-        <p className="page-sub">월세 고지·미납 안내 문구를 만들고, 확인한 뒤 보냅니다. 승인하지 않은 메시지는 보내지 않습니다.</p>
+        <p className="page-sub">월세 고지·미납 안내·계약 만료 안내 문구를 만들고, 확인한 뒤 보냅니다. 승인하지 않은 메시지는 보내지 않습니다.</p>
       </header>
 
       <p className="flex gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
@@ -77,7 +81,10 @@ export default function NotificationsPage() {
               return { text: `월세 고지 초안 ${x.created}건을 만들었습니다.`, list: x.skipped }; })}
           onOverdue={(asOf) => run(() => api(`/api/v1/notifications/overdue-notices?as_of=${asOf}`, json("POST")),
             (r) => { const x = r as { created: number; skipped: string[] }; setTab("draft");
-              return { text: `미납 안내 초안 ${x.created}건을 만들었습니다.`, list: x.skipped }; })} />}
+              return { text: `미납 안내 초안 ${x.created}건을 만들었습니다.`, list: x.skipped }; })}
+          onRenewal={(asOf) => run(() => api(`/api/v1/notifications/renewal-notices?as_of=${asOf}`, json("POST")),
+            (r) => { const x = r as { created: number; skipped: string[] }; setTab("draft");
+              return { text: `계약 만료 안내 초안 ${x.created}건을 만들었습니다.`, list: x.skipped }; })} />}
       </div>
 
       {msg && (
@@ -101,7 +108,7 @@ export default function NotificationsPage() {
         </div>
         {items === null ? <p className="text-sm text-slate-400">불러오는 중…</p>
           : shown.length === 0 ? <p className="py-6 text-center text-sm text-slate-500">{
-            tab === "draft" ? "초안이 없습니다. 위에서 월세 고지나 미납 안내를 만드세요."
+            tab === "draft" ? "초안이 없습니다. 위에서 월세 고지·미납 안내·계약 만료 안내를 만드세요."
               : tab === "approved" ? "보낼 메시지가 없습니다." : "보낸 메시지가 없습니다."}</p>
           : <ul className="space-y-3">{shown.map((m) => <MessageCard key={m.id} m={m} canWrite={canWrite} busy={busy} run={run} />)}</ul>}
       </section>
@@ -110,10 +117,11 @@ export default function NotificationsPage() {
 }
 
 function SettingsCard({ cfg, canWrite, busy, onSave }: { cfg: NotifySettings; canWrite: boolean; busy: boolean;
-  onSave: (b: { grace_days: number | null; rent_template: string; overdue_template: string }) => void }) {
+  onSave: (b: { grace_days: number | null; rent_template: string; overdue_template: string; renewal_template: string }) => void }) {
   const [grace, setGrace] = useState(cfg.grace_days?.toString() ?? "");
   const [rent, setRent] = useState(cfg.rent_template ?? "");
   const [overdue, setOverdue] = useState(cfg.overdue_template ?? "");
+  const [renewal, setRenewal] = useState(cfg.renewal_template ?? "");
   return (
     <section className="card p-5">
       <div className="mb-3 flex items-center gap-2"><Settings2 className="h-5 w-5 text-blue-600" /><h2 className="card-title">알림 설정</h2></div>
@@ -134,21 +142,39 @@ function SettingsCard({ cfg, canWrite, busy, onSave }: { cfg: NotifySettings; ca
         </label>
         <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
           <p className="mb-1 font-medium text-slate-700">문구에 넣을 수 있는 칸 — 보낼 때 실제 값으로 바뀝니다</p>
-          <ul className="flex flex-wrap gap-x-3 gap-y-1">{Object.entries(cfg.variables).map(([k, v]) => (
-            <li key={k}><code className="rounded bg-white px-1">{`{${k}}`}</code> {v}</li>))}</ul>
+          <VarList vars={cfg.variables} />
           <p className="mt-1">입금 계좌 등 고정된 내용은 문구에 직접 쓰세요.</p>
         </div>
+        <label className="block">
+          <span className="mb-1 block font-medium text-slate-700">계약 만료 안내 문구 (갱신 거절·조건 변경 통지)</span>
+          <textarea className="field min-h-20 w-full" value={renewal} disabled={!canWrite} onChange={(e) => setRenewal(e.target.value)} />
+          <span className="mt-1 block text-xs text-slate-500">갱신할지, 조건(월세·보증금)을 바꿀지는 직접 정해 문구에 쓰세요.
+            만료 6개월 전~2개월 전에 임차인에게 닿아야 효력이 있습니다 (주택임대차보호법 제6조).</span>
+        </label>
+        <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+          <p className="mb-1 font-medium text-slate-700">계약 만료 안내에 넣을 수 있는 칸</p>
+          <VarList vars={cfg.renewal_variables} />
+        </div>
         {canWrite && <button type="button" className="btn-primary" disabled={busy}
-          onClick={() => onSave({ grace_days: grace === "" ? null : Number(grace), rent_template: rent, overdue_template: overdue })}>저장</button>}
+          onClick={() => onSave({ grace_days: grace === "" ? null : Number(grace), rent_template: rent, overdue_template: overdue,
+            renewal_template: renewal })}>저장</button>}
       </div>
     </section>
   );
 }
 
-function MakeCard({ cfg, canWrite, busy, onRent, onOverdue }: { cfg: NotifySettings; canWrite: boolean; busy: boolean;
-  onRent: (p: string) => void; onOverdue: (d: string) => void }) {
+function VarList({ vars }: { vars: Record<string, string> }) {
+  return (
+    <ul className="flex flex-wrap gap-x-3 gap-y-1">{Object.entries(vars).map(([k, v]) => (
+      <li key={k}><code className="rounded bg-white px-1">{`{${k}}`}</code> {v}</li>))}</ul>
+  );
+}
+
+function MakeCard({ cfg, canWrite, busy, onRent, onOverdue, onRenewal }: { cfg: NotifySettings; canWrite: boolean; busy: boolean;
+  onRent: (p: string) => void; onOverdue: (d: string) => void; onRenewal: (d: string) => void }) {
   const [period, setPeriod] = useState(thisMonthKst());
   const [asOf, setAsOf] = useState(todayKst());
+  const [renewAsOf, setRenewAsOf] = useState(todayKst());
   return (
     <section className="card p-5">
       <div className="mb-3 flex items-center gap-2"><MessageSquareText className="h-5 w-5 text-blue-600" /><h2 className="card-title">메시지 만들기</h2></div>
@@ -170,6 +196,15 @@ function MakeCard({ cfg, canWrite, busy, onRent, onOverdue }: { cfg: NotifySetti
           </div>
           {(cfg.grace_days == null || !cfg.overdue_template) && <p className="mt-1 text-xs text-slate-500">유예기간과 미납 안내 문구를 먼저 정하세요.</p>}
         </div>
+        <div>
+          <p className="mb-1 font-medium text-slate-700">계약 만료 안내 — 그날이 갱신 통지 기간(만료 6개월~2개월 전)인 계약만</p>
+          <div className="flex flex-wrap gap-2">
+            <input type="date" className="field" aria-label="계약 만료 안내 기준일" value={renewAsOf} onChange={(e) => setRenewAsOf(e.target.value)} />
+            <button type="button" className="btn-secondary" disabled={!canWrite || busy || !cfg.renewal_template}
+              onClick={() => onRenewal(renewAsOf)}>계약 만료 안내 만들기</button>
+          </div>
+          {!cfg.renewal_template && <p className="mt-1 text-xs text-slate-500">계약 만료 안내 문구를 먼저 정하세요.</p>}
+        </div>
         <p className="text-xs text-slate-500">만든 메시지는 초안입니다. 내용을 확인·수정하고 승인해야 보낼 수 있습니다.</p>
       </div>
     </section>
@@ -185,8 +220,8 @@ function MessageCard({ m, canWrite, busy, run }: { m: Message; canWrite: boolean
   return (
     <li className="rounded-2xl border border-slate-200 p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
-        <span className={`chip ${m.kind === "overdue_notice" ? "bg-orange-50 text-orange-800" : "bg-blue-50 text-blue-700"}`}>{KIND[m.kind]}</span>
-        <b>{who}</b><span className="text-slate-500">{m.period}</span>
+        <span className={`chip ${KIND_TONE[m.kind]}`}>{KIND[m.kind]}</span>
+        <b>{who}</b><span className="text-slate-500">{m.lease_end ? `만료 ${m.lease_end}` : m.period}</span>
         <span className="ml-auto tabular-nums text-slate-600">{m.phone ?? "연락처 없음"}</span>
       </div>
       {m.status === "draft" && canWrite

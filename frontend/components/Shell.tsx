@@ -6,11 +6,13 @@ import {
   MailWarning,
   Building2,
   Calculator,
-  FileBarChart,
+  ClipboardCheck,
+  DoorOpen,
   FileText,
   House,
   Landmark,
   LayoutDashboard,
+  Package,
   Menu,
   MoreHorizontal,
   Receipt,
@@ -30,13 +32,15 @@ type NavItem = { href: string | null; label: string; icon: LucideIcon };
 const NAV: NavItem[] = [
   { href: "/", label: "대시보드", icon: LayoutDashboard },
   { href: "/onboarding", label: "건물·호실 등록", icon: Building2 },
+  { href: "/units", label: "호실·계약", icon: DoorOpen },
   { href: "/contracts", label: "계약 관리", icon: FileText },
+  { href: "/move-out", label: "입주·퇴실", icon: ClipboardCheck },
   { href: "/payments", label: "임대료 관리", icon: Wallet },
   { href: "/expenses", label: "지출·운영비", icon: Receipt },
   { href: "/notifications", label: "알림·메시지", icon: Bell },
-  { href: null, label: "세무 관리", icon: Landmark },
-  { href: null, label: "전월세 시뮬레이션", icon: Calculator },
-  { href: null, label: "보고서", icon: FileBarChart },
+  { href: "/assets", label: "자산·수리", icon: Package },
+  { href: "/tax", label: "세무 준비", icon: Landmark },
+  { href: "/simulate", label: "전월세 시뮬레이션", icon: Calculator },
   { href: "/settings", label: "설정", icon: Settings },
 ];
 
@@ -177,14 +181,14 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     <MeContext.Provider value={{ me, reload }}>
     <div className="min-h-screen lg:flex">
       {/* 데스크톱 사이드바 */}
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col gap-6 bg-gradient-to-b from-navy-800 to-navy-950 px-4 py-6 text-white lg:flex">
+      <aside className="sticky top-0 hidden h-screen print:!hidden w-64 shrink-0 flex-col gap-6 bg-gradient-to-b from-navy-800 to-navy-950 px-4 py-6 text-white lg:flex">
         <div className="px-2"><Logo /></div>
         <NavList pathname={pathname} />
         <div className="mt-auto space-y-3"><SidebarCard /><UserBox me={me} /></div>
       </aside>
 
       {/* 모바일 상단 바 */}
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-2.5 backdrop-blur lg:hidden">
+      <header className="sticky top-0 z-30 flex items-center justify-between print:hidden border-b border-slate-200 bg-white/95 px-4 py-2.5 backdrop-blur lg:hidden">
         <a href="/" className="flex items-center gap-2 font-extrabold tracking-tight text-navy-800">
           <House className="h-6 w-6 text-blue-600" strokeWidth={2.4} /> ROOMAX
         </a>
@@ -219,7 +223,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* 모바일 하단 탭 */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 print:hidden border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
         aria-label="주요 메뉴">
         {TABS.map(({ href, label, icon: Icon }) => {
           const active = isActive(pathname, href!);

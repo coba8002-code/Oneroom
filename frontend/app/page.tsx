@@ -4,6 +4,7 @@ import {
   AlertCircle,
   ArrowDownToLine,
   Bell,
+  BellRing,
   CalendarClock,
   CalendarDays,
   ChevronRight,
@@ -17,6 +18,7 @@ import {
   Sun,
   TrendingUp,
   Wallet,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -92,6 +94,14 @@ export default function Home() {
     }
   }, [orgId, asOf]);
   useEffect(() => { reload(); }, [reload]);
+  // 오늘 화면을 열어 두면 1분마다 다시 읽는다 (휴대폰 입금 알림이 들어오면 바로 반영). 다른 탭에 있을 땐 쉼
+  useEffect(() => {
+    if (asOf !== todayKst()) return;
+    const tick = () => { if (document.visibilityState === "visible") reload(); };
+    const timer = window.setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", tick); };
+  }, [asOf, reload]);
 
   async function generateCharges() {
     if (!d) return;
@@ -181,6 +191,8 @@ function DashboardBody({ d, busy, onGenerate }: { d: Dashboard; busy: boolean; o
           value={won(d.money.noi)} sub={d.money.bank_covered ? "확인된 입금 − 운영비" : "은행 내역을 가져오면 계산"} href="/expenses" wide />
       </section>
 
+      {d.due_today.length > 0 && <DueTodayCard d={d} />}
+
       <section className="grid gap-4 xl:grid-cols-12">
         <UnitsCard d={d} />
         <div className="space-y-4 xl:col-span-4">
@@ -202,20 +214,29 @@ function DashboardBody({ d, busy, onGenerate }: { d: Dashboard; busy: boolean; o
             </li>
           ))}
         </ListCard>
-        <ListCard icon={FileSearch} title="계약 만료 · 보증금 반환" empty="60일 안에 만료되는 계약이 없습니다.">
-          {d.lease_endings.map((x) => (
-            <li key={x.unit_no} className="space-y-0.5">
-              <div className="flex justify-between gap-2">
-                <span><b className="font-semibold">{x.unit_no}호</b> {x.tenant_name}</span>
-                <span className={`chip ${x.days_left < 0 ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-600"}`}>
-                  {x.days_left >= 0 ? `D-${x.days_left}` : `${-x.days_left}일 지남`}
-                </span>
-              </div>
-              <div className="text-xs text-slate-500">
-                만료 {x.end_date}{x.deposit_to_return ? ` · 반환할 보증금 ${won(x.deposit_to_return)}` : ""}
-              </div>
-            </li>
-          ))}
+        <ListCard icon={FileSearch} title="계약 만료 · 갱신 통지" empty="곧 갱신 통지 기간이 열리거나 만료되는 계약이 없습니다."
+          footnote="주택임대차보호법 제6조: 만료 6개월 전~2개월 전에 갱신 거절·조건 변경을 통지하지 않으면 같은 조건으로 갱신된 것으로 봅니다. 통지는 임차인에게 닿아야 하니 여유를 두고 보내세요.">
+          {d.lease_endings.map((x) => {
+            const [label, tone] = NOTICE_STAGE[x.notice_sent_on && x.stage !== "ended" ? "sent" : x.stage];
+            return (
+              <li key={x.unit_no} className="space-y-0.5">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <span><b className="font-semibold">{x.unit_no}호</b> {x.tenant_name}</span>
+                  <span className="flex gap-1">
+                    <span className={`chip ${tone}`}>{label}</span>
+                    <span className={`chip ${x.days_left < 0 ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-600"}`}>
+                      {x.days_left >= 0 ? `D-${x.days_left}` : `${-x.days_left}일 지남`}
+                    </span>
+                  </span>
+                </div>
+                <div className="text-xs text-slate-500">
+                  만료 {x.end_date}
+                  {x.stage !== "ended" && (x.notice_sent_on ? ` · 안내 보냄 ${x.notice_sent_on}` : ` · 통지 ${x.notice_from} ~ ${x.notice_until}`)}
+                  {x.deposit_to_return && x.days_left <= DEPOSIT_RETURN_DAYS ? ` · 반환할 보증금 ${won(x.deposit_to_return)}` : ""}
+                </div>
+              </li>
+            );
+          })}
         </ListCard>
         <ListCard icon={Landmark} title="세금 일정" empty="120일 안에 일반 일정이 없습니다."
           footnote="일반 법정 일정입니다. 본인 해당 여부(사업자등록·주택 수·공시가격 등)는 확인이 필요하며, 마감이 주말·공휴일이면 다음 영업일입니다.">
@@ -397,6 +418,16 @@ function RecentCard({ d }: { d: Dashboard }) {
   );
 }
 
+const DEPOSIT_RETURN_DAYS = 60; // 서버 dashboard.LEASE_END_WINDOW 와 같게 — 갱신될 수 있는 먼 계약엔 반환액을 띄우지 않음
+
+const NOTICE_STAGE: Record<string, [string, string]> = {
+  early: ["통지 기간 전", "bg-slate-100 text-slate-600"],
+  open: ["통지 기간", "bg-amber-50 text-amber-800"],
+  closed: ["통지 기간 지남", "bg-red-50 text-red-700"],
+  ended: ["만료", "bg-slate-100 text-slate-600"],
+  sent: ["안내 보냄", "bg-emerald-50 text-emerald-700"],
+};
+
 const ALERT_ICON: Record<string, { icon: LucideIcon; tone: string }> = {
   bank_none: { icon: ArrowDownToLine, tone: "bg-amber-50 text-amber-600" },
   bank_stale: { icon: ArrowDownToLine, tone: "bg-amber-50 text-amber-600" },
@@ -406,6 +437,10 @@ const ALERT_ICON: Record<string, { icon: LucideIcon; tone: string }> = {
   overdue: { icon: CircleAlert, tone: "bg-red-50 text-red-500" },
   deposit_unreceived: { icon: Landmark, tone: "bg-sky-50 text-sky-600" },
   lease_ending: { icon: CalendarClock, tone: "bg-indigo-50 text-indigo-600" },
+  lease_notice_soon: { icon: CalendarClock, tone: "bg-indigo-50 text-indigo-600" },
+  lease_notice_open: { icon: CalendarClock, tone: "bg-amber-50 text-amber-600" },
+  lease_notice_missed: { icon: CalendarClock, tone: "bg-red-50 text-red-500" },
+  repair_open: { icon: Wrench, tone: "bg-orange-50 text-orange-600" },
   vacant: { icon: Info, tone: "bg-slate-100 text-slate-500" },
 };
 
@@ -461,6 +496,43 @@ function QuickActions() {
         ))}
       </div>
     </div>
+  );
+}
+
+const DUE_TODAY: Record<Dashboard["due_today"][number]["status"], [string, string]> = {
+  paid: ["입금 확인", "bg-emerald-50 text-emerald-700"],
+  partial: ["일부 입금", "bg-amber-50 text-amber-700"],
+  review: ["입금 검토 대기", "bg-amber-50 text-amber-700"],
+  not_yet: ["아직 확인 안 됨", "bg-slate-100 text-slate-600"],
+};
+
+function DueTodayCard({ d }: { d: Dashboard }) {
+  const done = d.due_today.filter((x) => x.status === "paid").length;
+  const hhmm = (iso: string) => new Date(iso).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false });
+  return (
+    <section className="card p-4 sm:p-5" aria-labelledby="due-today">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="due-today" className="card-title flex items-center gap-2">
+          <BellRing className="h-4 w-4 text-blue-500" />오늘 납부일 <span className="text-sm font-normal text-slate-500">{done}/{d.due_today.length} 입금 확인</span>
+        </h2>
+        <a href="/settings#bank-alerts" className="text-xs text-blue-700 hover:underline">휴대폰 입금 알림 연결</a>
+      </div>
+      <ul className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        {d.due_today.map((x) => {
+          const [label, tone] = DUE_TODAY[x.status];
+          return (
+            <li key={x.unit_no + x.period} className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 px-3 py-2">
+              <span className="min-w-0"><b className="font-semibold">{x.unit_no}호</b> <span className="text-slate-500">{x.tenant_name}</span>
+                <span className="block text-xs text-slate-500 tabular-nums">{won(x.amount)}{x.status === "partial" && ` 중 ${won(x.paid)}`}
+                  {x.paid_at && ` · ${hhmm(x.paid_at)} ${x.via === "alert" ? "알림" : "통장 내역"}`}</span></span>
+              {x.status === "review" ? <a href="/payments" className={`chip shrink-0 ${tone}`}>{label}</a>
+                : <span className={`chip shrink-0 ${tone}`}>{label}</span>}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2 text-xs text-slate-500">알림이 안 왔다고 미납은 아닙니다 — 미납 판단은 통장 내역으로 하세요. 화면을 열어 두면 1분마다 새로 고칩니다.</p>
+    </section>
   );
 }
 

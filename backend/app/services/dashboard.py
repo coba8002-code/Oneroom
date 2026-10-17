@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models import Charge, Deposit, Lease, Payment, Property, Tenant, Transaction, TransactionAllocation, Unit
-from app.services import backup, ledger, receivables, reports, tax_calendar
+from app.services import backup, fixtures, lease_renewal, lease_rules, ledger, receivables, reports, tax_calendar
 from app.services.charges import due_date_for
 from app.services.expenses import kst_date
 from app.services.matching import org_transactions
@@ -54,8 +54,35 @@ def _recent(session: Session, organization_id, unit_by_lease: dict) -> list[dict
                     "label": label, "confirmed": bool(allocs)})
     return out
 
+def _due_today(session: Session, leases: dict, units: list, as_of: date) -> list[dict]:
+    """오늘이 납부일인 청구와 입금 상태. 입금 알림이 들어오면 바로 '입금 확인'으로 바뀐다.
+    안 들어왔다고 미납으로 단정하지 않는다 — 'not_yet'(아직 확인된 입금 없음)일 뿐."""
+    out = []
+    unit_no = {u.id: u.unit_no for u in units}
+    for lease, name in leases.values():
+        for c in session.scalars(select(Charge).where(Charge.lease_id == lease.id, Charge.due_date == as_of,
+                                                      Charge.status != "waived")):
+            paid = ledger.paid_amount(session, c.id)
+            last = session.execute(
+                select(Transaction.occurred_at, Transaction.source)
+                .join(TransactionAllocation, TransactionAllocation.transaction_id == Transaction.id)
+                .join(Payment, Payment.transaction_allocation_id == TransactionAllocation.id)
+                .where(Payment.charge_id == c.id).order_by(Transaction.occurred_at.desc()).limit(1)).first()
+            review = session.scalar(select(func.count()).select_from(TransactionAllocation).where(
+                TransactionAllocation.lease_id == lease.id, TransactionAllocation.review_status == "pending",
+                TransactionAllocation.category == "rent"))
+            status = ("paid" if paid >= c.amount else "partial" if paid > 0
+                      else "review" if review else "not_yet")
+            out.append({"unit_no": unit_no[lease.unit_id], "tenant_name": name, "period": c.period,
+                        "amount": c.amount, "paid": paid, "status": status,
+                        "paid_at": last[0] if last else None, "via": last[1] if last else None,
+                        "review_count": review})
+    return sorted(out, key=lambda x: x["unit_no"])
+
+
 STALE_BANK_DAYS = 7
-LEASE_END_WINDOW = 60
+LEASE_END_WINDOW = 60  # 보증금 반환 준비 안내
+NOTICE_PREVIEW_DAYS = 30  # 통지 기간이 열리기 이만큼 전부터 미리 알림
 DUE_SOON_DAYS = 7
 BACKUP_REMIND_DAYS = 30
 
@@ -108,21 +135,26 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
                 due_soon.append({"unit_no": unit_no, "due_date": c.due_date, "outstanding": remaining})
     due_soon.sort(key=lambda x: (x["due_date"], x["unit_no"]))
 
-    # 계약 만료 예정 + 돌려줄 보증금 (만료가 지났는데 아직 반환 안 한 것도)
+    # 계약 만료 예정 + 돌려줄 보증금 (만료가 지났는데 아직 반환 안 한 것도).
+    # 갱신 통지 기간(만료 6개월~2개월 전, 주임법 §6)이 열리기 한 달 전부터 보여 준다
     lease_endings = []
     for lease, name in leases.values():
         if lease.end_date is None:
             continue
-        days_left = (lease.end_date - as_of).days
+        w = lease_renewal.window(lease.end_date)
+        stage = w.stage(as_of)
         unreturned = session.scalar(select(func.sum(Deposit.amount)).where(  # 받았고 아직 안 돌려준 것 (최초분+증액분)
             Deposit.lease_id == lease.id, Deposit.received_at.is_not(None),
             Deposit.returned_at.is_(None)))
-        if days_left <= LEASE_END_WINDOW and (days_left >= 0 or unreturned):
-            lease_endings.append({
-                "unit_no": next(u.unit_no for u in units if u.id == lease.unit_id),
-                "tenant_name": name, "end_date": lease.end_date, "days_left": days_left,
-                "deposit_to_return": int(unreturned) if unreturned else None,
-            })
+        if (stage == "early" and (w.notice_from - as_of).days > NOTICE_PREVIEW_DAYS) or (stage == "ended" and not unreturned):
+            continue
+        lease_endings.append({
+            "unit_no": next(u.unit_no for u in units if u.id == lease.unit_id),
+            "tenant_name": name, "end_date": lease.end_date, "days_left": (lease.end_date - as_of).days,
+            "deposit_to_return": int(unreturned) if unreturned else None,
+            "stage": stage, "notice_from": w.notice_from, "notice_until": w.notice_until,
+            "notice_sent_on": lease_renewal.notice_sent_on(session, lease.id, lease.end_date),
+        })
     lease_endings.sort(key=lambda x: x["end_date"])
 
     got = aliased(Deposit)
@@ -165,9 +197,39 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
         what = "보증금 증액분" if increase else "보증금"
         add("info", "deposit_unreceived", f"{unit_no} {what} {amount:,}원 수령 기록 없음.", "/payments")
     for e in lease_endings:
-        when = f"{e['days_left']}일 후 만료" if e["days_left"] >= 0 else f"만료 {-e['days_left']}일 지남"
-        dep = f", 보증금 {e['deposit_to_return']:,}원 반환 예정" if e["deposit_to_return"] else ""
-        add("info", "lease_ending", f"{e['unit_no']} 계약 {when}{dep}.", "/expenses")
+        unit, end, until = e["unit_no"], f"{e['end_date']:%Y-%m-%d}", f"{e['notice_until']:%Y-%m-%d}"
+        sent = e["notice_sent_on"]
+        if e["stage"] == "early":
+            add("info", "lease_notice_soon", f"{unit} 계약 {end} 만료 — 갱신 거절·조건 변경 통지 기간이 "
+                f"{e['notice_from']:%Y-%m-%d}부터 {until}까지입니다 ({lease_renewal.LAW}).", "/notifications")
+        elif e["stage"] == "open" and not sent:
+            add("warn", "lease_notice_open", f"{unit} 계약 {end} 만료 — 갱신 거절이나 조건 변경을 하려면 {until}까지 "
+                f"임차인에게 닿도록 통지하세요. 통지가 없으면 같은 조건으로 갱신된 것으로 봅니다 ({lease_renewal.LAW}).",
+                "/notifications")
+        elif e["stage"] == "closed" and not sent:
+            add("warn", "lease_notice_missed", f"{unit} 통지 기간({until}까지)에 보낸 계약 만료 안내 기록이 없습니다. "
+                f"따로 통지하지 않았다면 {end} 만료 때 같은 조건으로 2년 갱신된 것으로 봅니다 ({lease_renewal.LAW}). "
+                "임차인과 갱신 여부를 확인하세요.", "/contracts")
+        if e["days_left"] <= LEASE_END_WINDOW:
+            when = f"{e['days_left']}일 후 만료" if e["days_left"] >= 0 else f"만료 {-e['days_left']}일 지남"
+            dep = f", 보증금 {e['deposit_to_return']:,}원 반환 예정" if e["deposit_to_return"] else ""
+            add("info", "lease_ending", f"{unit} 계약 {when}{dep}.", "/expenses")
+    if open_repairs := fixtures.open_repair_count(session, organization_id):
+        add("info", "repair_open", f"진행 중인 수리 {open_repairs}건.", "/assets")
+    for le, due, late in lease_rules.report_reminders(session, [le for le, _ in leases.values()], as_of):
+        unit_no = next(u.unit_no for u in units if u.id == le.unit_id)
+        add("warn", "lease_report", f"{unit_no} 임대차 신고 기한 {due:%Y-%m-%d}" + (" 이 지났습니다" if late else " 입니다")
+            + " (보증금 6천만 원 초과 또는 월세 30만 원 초과). 신고했거나 대상 지역이 아니면 호실·계약에서 표시하세요.", "/units")
+    # 종료된 계약이라도 보증금을 돌려주기 전까지는 부채 — 계속 알린다
+    for unit_no, amount, ended_on in session.execute(
+            select(Unit.unit_no, func.sum(Deposit.amount), Lease.ended_on)
+            .join(Lease, Deposit.lease_id == Lease.id).join(Unit, Lease.unit_id == Unit.id)
+            .join(Property, Unit.property_id == Property.id)
+            .where(Property.organization_id == organization_id, Lease.status == "ended",
+                   Deposit.received_at.is_not(None), Deposit.returned_at.is_(None))
+            .group_by(Unit.unit_no, Lease.id, Lease.ended_on).order_by(Unit.unit_no)):
+        add("warn", "deposit_unreturned_ended",
+            f"{unit_no} 계약이 {ended_on:%Y-%m-%d}에 끝났는데 보증금 {int(amount):,}원을 돌려준 기록이 없습니다.", "/expenses")
     last_backup = backup.last_backup_at(session, organization_id)
     if last_backup is None:
         add("info", "backup_none", "아직 백업한 적이 없습니다. 설정에서 백업 파일을 내려받아 두세요.", "/settings")
@@ -200,6 +262,7 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
             session, organization_id,
             {lease.id: next(u.unit_no for u in units if u.id == lease.unit_id) for lease, _ in leases.values()}),
         "due_soon": due_soon,
+        "due_today": _due_today(session, leases, units, as_of),
         "lease_endings": lease_endings,
         "tax_events": tax_calendar.upcoming(as_of),
         "attention": attention,

@@ -12,6 +12,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import (
     JSON,
     BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -165,6 +166,9 @@ class Lease(Base):
     rent: Mapped[int] = mapped_column(BigInteger, default=0)  # 관리비 포함 월세
     due_day: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), default="active")  # active | ended | draft
+    signed_on: Mapped[date | None] = mapped_column(Date)  # 계약 체결일 (임대차 신고 기한 30일의 기준). 모르면 비움
+    ended_on: Mapped[date | None] = mapped_column(Date)  # 실제로 계약이 끝난 날 (퇴거일). 계약서의 만료일과 다를 수 있음
+    end_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
 
 
@@ -208,6 +212,9 @@ class BankAccount(Base):
     id: Mapped[uuid.UUID] = pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
     alias: Mapped[str] = mapped_column(String(100))
+    # 입금 알림 연결 주소의 비밀 토큰 (sha256 만 저장 — 원문은 만들 때 한 번만 보여 줌)
+    alert_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    alert_token_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
 
 
@@ -228,6 +235,9 @@ class Transaction(Base):
     balance_after: Mapped[int | None] = mapped_column(BigInteger)
     fingerprint: Mapped[str] = mapped_column(String(64))
     import_batch: Mapped[str | None] = mapped_column(String(64))
+    # statement: 통장 내역 파일(CSV/XLSX) · alert: 휴대폰 입금 알림. 알림은 '들어왔다'의 증거일 뿐
+    # '안 들어왔다'의 증거가 아니므로, 은행 내역이 어디까지 있는지(미납 판단·결산)는 statement 만 본다
+    source: Mapped[str] = mapped_column(String(10), default="statement", server_default="statement")
     created_at: Mapped[datetime] = created_at()
 
 
@@ -363,8 +373,9 @@ class Notification(Base):
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tenants.id"))
     lease_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("leases.id"))
     charge_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("charges.id"), index=True)
+    term_end: Mapped[date | None] = mapped_column(Date)  # 계약 만료 안내가 가리키는 만료일 (갱신되면 새 안내 필요)
     channel: Mapped[str] = mapped_column(String(20))  # sms | alimtalk
-    template: Mapped[str] = mapped_column(String(100))  # rent_notice | overdue_notice
+    template: Mapped[str] = mapped_column(String(100))  # rent_notice | overdue_notice | renewal_notice
     body: Mapped[str | None] = mapped_column(Text)  # 만들 때 채운 문구 (초안에서 고칠 수 있음)
     status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | approved | sent | failed | discarded
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -382,15 +393,164 @@ class NotificationSetting(Base):
     grace_days: Mapped[int | None] = mapped_column(Integer)
     rent_template: Mapped[str | None] = mapped_column(Text)
     overdue_template: Mapped[str | None] = mapped_column(Text)
+    renewal_template: Mapped[str | None] = mapped_column(Text)  # 계약 만료 안내 (주임법 §6 갱신 통지)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
-class MaintenanceTicket(Base):
-    __tablename__ = "maintenance_tickets"
+class Fixture(Base):
+    """자산대장 — 호실 옵션·집기와 건물 공용 설비. unit_id 가 없으면 건물 공용.
+    수명·교체 시기를 시스템이 추정하지 않는다: 교체 예정월(replace_by)은 관리자가 정한 값만."""
+    __tablename__ = "fixtures"
+    __table_args__ = (
+        CheckConstraint("price IS NULL OR price >= 0", name="ck_fixtures_price"),
+        CheckConstraint("owner IN ('landlord', 'tenant')", name="ck_fixtures_owner"),
+    )
     id: Mapped[uuid.UUID] = pk()
-    unit_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("units.id"), index=True)
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id"), index=True)
+    unit_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units.id"), index=True)
+    category: Mapped[str] = mapped_column(String(30))  # services/fixtures.CATEGORIES
+    name: Mapped[str] = mapped_column(String(100))
+    brand: Mapped[str | None] = mapped_column(String(50))
+    model: Mapped[str | None] = mapped_column(String(100))
+    manufactured: Mapped[str | None] = mapped_column(String(7))  # 제조연월 YYYY-MM (명판)
+    installed_on: Mapped[date | None] = mapped_column(Date)  # 설치·구입일
+    price: Mapped[int | None] = mapped_column(BigInteger)  # 구입가 (원)
+    warranty_until: Mapped[date | None] = mapped_column(Date)
+    owner: Mapped[str] = mapped_column(String(20), default="landlord")  # landlord: 임대인 옵션 | tenant: 임차인 소유
+    replace_by: Mapped[str | None] = mapped_column(String(7))  # 교체 예정월 YYYY-MM (관리자가 정함)
+    status: Mapped[str] = mapped_column(String(20), default="in_use")  # in_use | removed
+    removed_on: Mapped[date | None] = mapped_column(Date)
+    removed_reason: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class MaintenanceTicket(Base):
+    """수리 이력. 비용은 기록용 — 결산(NOI)에는 은행 출금을 '수리비'로 분류한 것만 들어간다 (이중 계산 방지)."""
+    __tablename__ = "maintenance_tickets"
+    __table_args__ = (
+        CheckConstraint("cost IS NULL OR cost >= 0", name="ck_maintenance_cost"),
+        CheckConstraint("payer IN ('landlord', 'tenant', 'undecided')", name="ck_maintenance_payer"),
+    )
+    id: Mapped[uuid.UUID] = pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id"), index=True)
+    unit_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units.id"), index=True)  # 없으면 건물 공용
+    fixture_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fixtures.id"), index=True)
+    reported_on: Mapped[date] = mapped_column(Date)
     description: Mapped[str] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(20), default="open")
+    status: Mapped[str] = mapped_column(String(20), default="open")  # open | done
+    completed_on: Mapped[date | None] = mapped_column(Date)
+    vendor: Mapped[str | None] = mapped_column(String(100))
+    cost: Mapped[int | None] = mapped_column(BigInteger)
+    payer: Mapped[str] = mapped_column(String(20), default="undecided")  # 부담: landlord | tenant | undecided
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class Inspection(Base):
+    """입주·퇴실 점검. 계약마다 입주 1번, 퇴실 1번. 상태·계량기·사진을 남겨 퇴실 정산의 근거로 쓴다."""
+    __tablename__ = "inspections"
+    __table_args__ = (UniqueConstraint("lease_id", "kind"),
+                      CheckConstraint("kind IN ('move_in', 'move_out')", name="ck_inspections_kind"))
+    id: Mapped[uuid.UUID] = pk()
+    lease_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leases.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # move_in | move_out
+    inspected_on: Mapped[date] = mapped_column(Date)
+    tenant_confirmed_on: Mapped[date | None] = mapped_column(Date)  # 임차인과 함께 확인한 날
+    confirm_note: Mapped[str | None] = mapped_column(Text)  # 확인 방법 (예: 현장 동행, 사진 문자 전송)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class InspectionItem(Base):
+    """점검 항목 하나 (방·벽지·바닥·옵션 품목·계량기 등). 상태를 모르면 비워 둔다."""
+    __tablename__ = "inspection_items"
+    id: Mapped[uuid.UUID] = pk()
+    inspection_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("inspections.id"), index=True)
+    fixture_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fixtures.id"))
+    area: Mapped[str] = mapped_column(String(50))
+    condition: Mapped[str | None] = mapped_column(String(20))  # good | worn | dirty | damaged | missing
+    reading: Mapped[str | None] = mapped_column(String(30))  # 계량기 숫자 (글자 그대로)
+    note: Mapped[str | None] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = created_at()
+
+
+class InspectionPhoto(Base):
+    """점검 사진. 파일은 계약서처럼 암호화해 보관 (services/storage). 올린 시각(UTC)이 증빙 시각."""
+    __tablename__ = "inspection_photos"
+    id: Mapped[uuid.UUID] = pk()
+    item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("inspection_items.id"), index=True)
+    file_path: Mapped[str] = mapped_column(String(64))
+    content_type: Mapped[str] = mapped_column(String(50))
+    size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = created_at()
+
+
+class MoveOutSettlement(Base):
+    """퇴실 정산서. 확정하면 그때 숫자를 남겨 두고(스냅숏) 공제 항목을 잠근다. 실제 반환은 은행 출금 '보증금 반환'."""
+    __tablename__ = "move_out_settlements"
+    id: Mapped[uuid.UUID] = pk()
+    lease_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leases.id"), unique=True)
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | confirmed
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    snapshot: Mapped[dict | None] = mapped_column(JSON)  # 확정 때 계산 결과
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class SettlementDeduction(Base):
+    """보증금에서 뺄 항목 (관리자가 적음). 다툼이 있는 금액(disputed)은 먼저 돌려줄 금액에서 빼고 따로 보관."""
+    __tablename__ = "settlement_deductions"
+    __table_args__ = (CheckConstraint("amount >= 0", name="ck_settlement_deductions_amount"),)
+    id: Mapped[uuid.UUID] = pk()
+    settlement_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("move_out_settlements.id"), index=True)
+    category: Mapped[str] = mapped_column(String(20))  # damage | cleaning | utility | other
+    label: Mapped[str] = mapped_column(String(100))
+    amount: Mapped[int] = mapped_column(BigInteger)
+    disputed: Mapped[bool] = mapped_column(Boolean, default=False)
+    inspection_item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("inspection_items.id"))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class LeaseCheck(Base):
+    """계약 법정 체크 항목의 처리 기록 (정보 제시·납세증명서·임대차 신고). done: 했음 | na: 해당 없음."""
+    __tablename__ = "lease_checks"
+    __table_args__ = (UniqueConstraint("lease_id", "key"),
+                      CheckConstraint("status IN ('done', 'na')", name="ck_lease_checks_status"))
+    id: Mapped[uuid.UUID] = pk()
+    lease_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leases.id"), index=True)
+    key: Mapped[str] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(10))
+    done_on: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class ExpenseReceipt(Base):
+    """지출 증빙(영수증·세금계산서 사진·PDF). 파일은 암호화 보관(services/storage), 백업에 포함."""
+    __tablename__ = "expense_receipts"
+    id: Mapped[uuid.UUID] = pk()
+    expense_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("expenses.id"), index=True)
+    file_path: Mapped[str] = mapped_column(String(64))
+    content_type: Mapped[str] = mapped_column(String(50))
+    size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    original_name: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = created_at()
+
+
+class BankAlert(Base):
+    """받은 입금 알림 원문과 처리 결과 (형식 보강·문제 확인용)."""
+    __tablename__ = "bank_alerts"
+    id: Mapped[uuid.UUID] = pk()
+    bank_account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bank_accounts.id"), index=True)
+    text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20))  # created | duplicate | unparsed | outgoing
+    parsed: Mapped[dict | None] = mapped_column(JSON)
+    transaction_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("transactions.id"))
     created_at: Mapped[datetime] = created_at()
 
 

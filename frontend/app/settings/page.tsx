@@ -22,6 +22,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, apiFetch, kst } from "@/lib/api";
 import { useMe } from "@/lib/me";
 import { useOrg } from "@/lib/useOrg";
+import BankAlertCard from "./BankAlertCard";
 
 const MIN = 8;
 const COUNT_LABELS: [string, string][] = [
@@ -75,7 +76,7 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <header>
         <h1 className="page-title">설정</h1>
-        <p className="page-sub">계정 보안, 백업·복구, 연동 상태를 관리합니다.</p>
+        <p className="page-sub">계정 보안, 백업·복구, 연동(입금 알림·OCR) 상태를 관리합니다.</p>
       </header>
       {orgError && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{orgError}</p>}
 
@@ -87,6 +88,7 @@ export default function SettingsPage() {
         {isOwner && <RestoreCard direct={direct} onDone={reload} />}
         <ServerBackupCard />
         <OcrCard configured={ocr} />
+        {orgId && <BankAlertCard orgId={orgId} canWrite={me?.user.role !== "viewer"} />}
       </div>
       <DeleteAccountCard />
     </div>

@@ -105,6 +105,8 @@ class ImportOut(BaseModel):
     inserted: int
     duplicates: int
     errors: list[RowError]
+    merged_alerts: int = 0  # 입금 알림으로 먼저 들어온 거래와 합친 줄 수
+    alerts_without_statement: int = 0  # 이 파일 기간 안인데 내역에서 짝을 못 찾은 알림 거래 — 확인 필요
 
 
 # ── 입금 매칭 · 미수 ─────────────────────────────────────────
@@ -281,6 +283,7 @@ class MonthlyReportOut(BaseModel):
 class BankAccountOut(BaseModel):
     id: uuid.UUID
     alias: str
+    alert_since: datetime | None = None  # 입금 알림 연결 주소를 만든 시각 (없으면 연결 안 됨)
 
 
 class DashUnit(BaseModel):
@@ -334,12 +337,28 @@ class DueSoon(BaseModel):
     outstanding: int
 
 
+class DueToday(BaseModel):
+    unit_no: str
+    tenant_name: str
+    period: str
+    amount: int
+    paid: int
+    status: str  # paid | partial | review(입금 검토 대기 있음) | not_yet(아직 확인된 입금 없음 — 미납 단정 아님)
+    paid_at: datetime | None  # 이 청구에 들어간 가장 늦은 입금 시각
+    via: str | None  # alert(휴대폰 알림) | statement(통장 내역)
+    review_count: int
+
+
 class LeaseEnding(BaseModel):
     unit_no: str
     tenant_name: str
     end_date: date
     days_left: int
     deposit_to_return: int | None
+    stage: Literal["early", "open", "closed", "ended"]
+    notice_from: date
+    notice_until: date
+    notice_sent_on: date | None
 
 
 class TaxEventOut(BaseModel):
@@ -368,6 +387,7 @@ class DashboardOut(BaseModel):
     money: DashMoney
     recent_transactions: list[RecentTransaction]
     due_soon: list[DueSoon]
+    due_today: list[DueToday] = []
     lease_endings: list[LeaseEnding]
     tax_events: list[TaxEventOut]
     attention: list[AttentionItem]

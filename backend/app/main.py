@@ -6,8 +6,8 @@ from sqlalchemy import text
 from app.auth import org_guard
 from app.config import production_problems, settings
 from app.db import engine
-from app.routers import (auth, backups, bank, charges, contracts, dashboard, expenses, internal, members,
-                         notifications, onboarding, payments)
+from app.routers import (assets, auth, backups, bank, bank_alerts, charges, contracts, dashboard, expenses, internal,
+                         leases, members, move_out, notifications, onboarding, payments, rent_sim, tax_prep)
 
 PRODUCTION = settings.env == "production"
 if PRODUCTION and (problems := production_problems(settings)):
@@ -27,10 +27,12 @@ app.add_middleware(
 
 app.include_router(auth.router)  # 가입·로그인은 로그인 없이
 app.include_router(internal.router)  # 매일 작업 — 자체 비밀값으로 보호
+app.include_router(bank_alerts.public)  # 휴대폰 입금 알림 — 계좌별 비밀 토큰으로 보호
 
 # 업무 API 는 전부 로그인 필요 + organization_id 가 오면 내 사업장인지 검사 (app/auth.py)
 PROTECTED = [Depends(org_guard)]
-for r in (onboarding, charges, bank, payments, expenses, dashboard, contracts, backups, members, notifications):
+for r in (onboarding, charges, bank, payments, expenses, dashboard, contracts, backups, members, notifications,
+          assets, move_out, leases, tax_prep, rent_sim, bank_alerts):
     app.include_router(r.router, dependencies=PROTECTED)
 
 

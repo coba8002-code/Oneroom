@@ -5,6 +5,8 @@
 - 없으면 (일시·방향·금액·잔액·적요·상대방) + "같은 파일 안에서 같은 내용이 몇 번째인지".
   → 같은 날 같은 금액이 정말 2건이면 둘 다 들어가고, 같은 파일을 다시 올리면 둘 다 중복으로 걸러진다.
 - (bank_account_id, fingerprint) 유일 제약이 최종 방어선.
+- 휴대폰 입금 알림으로 먼저 들어온 거래(source='alert')는 같은 계좌·방향·금액이 30분 안(날짜만 있는 파일은
+  같은 날)에 있으면 새로 넣지 않고 그 거래를 내역 값으로 고쳐 합친다 — 이미 한 확정·배분은 그대로 남는다.
 
 은행별 열 이름은 실물 파일 확인 후 COLUMN_ALIASES 에 추가한다.
 """
@@ -16,7 +18,7 @@ import io
 import uuid
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -24,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.models import AuditLog, BankAccount, Transaction
 from app.schemas import ImportOut, RowError
+from app.services import matching
 from app.services.onboarding import decode_text
 
 KST = ZoneInfo("Asia/Seoul")
@@ -187,12 +190,20 @@ def import_transactions(session: Session, account: BankAccount, filename: str, r
         )
     )) if fps else set()
 
-    inserted = duplicates = 0
+    inserted = duplicates = merged = 0
+    used: set = set()
     for (_, r), fp in zip(parsed, fps):
         if fp in existing:
             duplicates += 1
             continue
         existing.add(fp)  # 같은 파일 안 거래고유번호 중복도 방어
+        if alert := _alert_twin(session, account.id, r, used):
+            used.add(alert.id)
+            alert.occurred_at, alert.description, alert.counterparty = r.occurred_at, r.description, r.counterparty
+            alert.balance_after, alert.fingerprint, alert.import_batch = r.balance_after, fp, batch
+            alert.source = "statement"
+            merged += 1
+            continue
         session.add(Transaction(
             bank_account_id=account.id, occurred_at=r.occurred_at, amount=r.amount,
             direction=r.direction, description=r.description, counterparty=r.counterparty,
@@ -200,10 +211,43 @@ def import_transactions(session: Session, account: BankAccount, filename: str, r
         ))
         inserted += 1
 
+    session.flush()
+    leftover = 0
+    if parsed:
+        first = min(r.occurred_at for _, r in parsed)
+        last = max(r.occurred_at for _, r in parsed)
+        last += timedelta(days=1) if last.astimezone(KST).time() == time() else ALERT_WINDOW  # 날짜만 있으면 그날 끝까지
+        leftover = len(session.scalars(select(Transaction.id).where(
+            Transaction.bank_account_id == account.id, Transaction.source == "alert",
+            Transaction.occurred_at >= first, Transaction.occurred_at < last)).all())
     session.add(AuditLog(
         action="transactions.import", entity_type="bank_account", entity_id=str(account.id),
         detail={"batch": batch, "file_type": filename.rsplit(".", 1)[-1].lower(), "total": total,
-                "inserted": inserted, "duplicates": duplicates, "errors": len(errors)},
+                "inserted": inserted, "duplicates": duplicates, "errors": len(errors),
+                "merged_alerts": merged, "alerts_without_statement": leftover},
     ))
     session.commit()
-    return ImportOut(batch=batch, total_rows=total, inserted=inserted, duplicates=duplicates, errors=errors)
+    return ImportOut(batch=batch, total_rows=total, inserted=inserted, duplicates=duplicates, errors=errors,
+                     merged_alerts=merged, alerts_without_statement=leftover)
+
+
+ALERT_WINDOW = timedelta(minutes=30)
+
+
+def _alert_twin(session: Session, account_id: uuid.UUID, r: ParsedRow, used: set) -> Transaction | None:
+    """이 내역 줄과 같은 거래로 보이는 입금 알림 거래. 후보가 여럿이면 입금자명이 같은 것 → 가까운 시각 순."""
+    local = r.occurred_at.astimezone(KST)
+    if local.time() == time():  # 시각 없이 날짜만 있는 파일 → 같은 날(KST)
+        lo, hi = r.occurred_at, r.occurred_at + timedelta(days=1)
+    else:
+        lo, hi = r.occurred_at - ALERT_WINDOW, r.occurred_at + ALERT_WINDOW
+    cands = [t for t in session.scalars(select(Transaction).where(
+        Transaction.bank_account_id == account_id, Transaction.source == "alert",
+        Transaction.direction == r.direction, Transaction.amount == r.amount,
+        Transaction.occurred_at >= lo, Transaction.occurred_at < hi)) if t.id not in used]
+    if not cands:
+        return None
+    name = matching.normalize_name(r.counterparty)
+    when = lambda t: abs((t.occurred_at if t.occurred_at.tzinfo else t.occurred_at.replace(tzinfo=timezone.utc))  # noqa: E731
+                         - r.occurred_at)
+    return min(cands, key=lambda t: (matching.normalize_name(t.counterparty) != name, when(t)))

@@ -6,8 +6,11 @@
 const TARGET_BYTES = 3.5 * 1024 * 1024;
 const MAX_SIDE = 2400;
 
-export async function shrinkImage(file: File): Promise<File> {
-  if (!/^image\/(jpeg|png|heic|heif|webp)$/.test(file.type) || file.size <= TARGET_BYTES) return file;
+export async function shrinkImage(file: File, opts: { jpegOnly?: boolean } = {}): Promise<File> {
+  if (!/^image\/(jpeg|png|heic|heif|webp)$/.test(file.type)) return file;
+  // jpegOnly: 서버가 JPG·PNG 만 받는 곳(점검 사진) — HEIC·WebP 는 크기와 상관없이 JPEG 로 바꾼다
+  const convert = opts.jpegOnly && !/^image\/(jpeg|png)$/.test(file.type);
+  if (file.size <= TARGET_BYTES && !convert) return file;
   try {
     const bitmap = await createImageBitmap(file);
     const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));

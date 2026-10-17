@@ -269,6 +269,13 @@ def decide(session: Session, organization_id: uuid.UUID, txn_id: uuid.UUID, *, s
     return created
 
 
+def _no_receipts(session: Session, e: Expense) -> None:
+    """증빙이 붙은 지출은 조용히 지우지 않는다 — 증빙을 먼저 지워야 한다."""
+    from app.models import ExpenseReceipt
+    if session.scalar(select(ExpenseReceipt.id).where(ExpenseReceipt.expense_id == e.id).limit(1)):
+        raise MatchError(f"{e.spent_on.isoformat()} {e.amount:,}원 지출에 증빙이 붙어 있습니다. 세무 준비에서 증빙을 먼저 지우세요")
+
+
 def cancel(session: Session, organization_id: uuid.UUID, txn_id: uuid.UUID) -> None:
     """출금 확정 취소 (나눈 것 전부). 거래는 검토 대기로 돌아간다."""
     txn = session.scalar(org_transactions(organization_id).where(Transaction.id == txn_id))
@@ -281,6 +288,7 @@ def cancel(session: Session, organization_id: uuid.UUID, txn_id: uuid.UUID) -> N
         raise MatchError("확정된 거래가 아닙니다")
     for a in allocs:
         for e in session.scalars(select(Expense).where(Expense.transaction_allocation_id == a.id)):
+            _no_receipts(session, e)
             session.delete(e)
         if a.category == "deposit_out":
             for dep in session.scalars(select(Deposit).where(
@@ -319,6 +327,7 @@ def delete_manual(session: Session, organization_id: uuid.UUID, expense_id: uuid
         raise LookupError("지출을 찾을 수 없습니다")
     if e.transaction_allocation_id is not None:
         raise MatchError("은행 거래에서 온 지출은 거래 확정을 취소하세요")
+    _no_receipts(session, e)
     session.delete(e)
     session.add(AuditLog(action="expense.manual_delete", entity_type="expense", entity_id=str(expense_id),
                          detail={"category": e.category, "amount": e.amount}))

@@ -68,8 +68,9 @@ def monthly(session: Session, organization_id: uuid.UUID, period: str) -> dict:
 
     earliest, latest = (
         t.replace(tzinfo=timezone.utc) if t is not None and t.tzinfo is None else t  # SQLite 는 시간대 없이 돌려줌 (저장은 UTC)
-        for t in session.execute(org_transactions(organization_id).with_only_columns(
-            func.min(Transaction.occurred_at), func.max(Transaction.occurred_at))).one())
+        for t in session.execute(org_transactions(organization_id).where(Transaction.source == "statement")
+                                 .with_only_columns(func.min(Transaction.occurred_at),
+                                                    func.max(Transaction.occurred_at))).one())
     # 모르면 비워 둔다 (CLAUDE.md 규칙 7): 청구 전이면 청구액을, 은행 내역 기간이 이 달과 겹치지 않으면 입금·지출을 모름
     charges_ready = charge_count > 0
     bank_covered = latest is not None and earliest < end and latest >= start
