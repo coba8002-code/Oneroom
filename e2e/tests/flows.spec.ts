@@ -94,7 +94,7 @@ test("AI 비서: 키가 없으면 '연결 안 됨' 안내만, 질문 칸은 잠�
 test("휴대폰 폭(390px)에서 주요 화면이 가로로 넘치지 않음", async ({ page }) => {
   await signupAndOnboard(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ["/", "/payments", "/expenses", "/units", "/assets", "/vacancy", "/move-out", "/tax", "/settings", "/assistant"]) {
+  for (const path of ["/", "/payments", "/expenses", "/units", "/assets", "/vacancy", "/move-out", "/tax", "/reports", "/settings", "/assistant"]) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     await noOverflow(page);
@@ -122,4 +122,34 @@ test("건물 두 동: 같은 통장을 함께 쓰고, 호실은 '건물 이름 +
   await page.locator("input[type=file]").first().setInputFiles(`${SAMPLES}/onboarding_units.csv`);
   await page.getByRole("button", { name: "등록", exact: true }).click();
   await expect(page.getByText(/이미 '행복빌라 2동' 건물이 있습니다/)).toBeVisible();
+});
+
+test("월간 보고서: 장부 값 그대로 한 장 요약 → 엑셀 내려받기, 인쇄 화면에서 메뉴 숨김", async ({ page }) => {
+  // 샘플 은행 내역(2026-11)을 지난달인 2026-09 로 옮겨 쓴다 — 보고서는 오지 않은 달을 만들지 않으므로
+  const org = await signupAndOnboard(page);
+  await api(page, "POST", `/api/v1/charges/generate?organization_id=${org}&period=2026-09`);
+  await importBank(page, org, sampleBank().replaceAll("2026-11-", "2026-09-"));
+  await api(page, "POST", `/api/v1/matching/run?organization_id=${org}`);
+
+  await page.goto("/reports");
+  await page.getByLabel("보고서 월").fill("2026-09");
+  await expect(page.getByText("2026-09 운영 보고서")).toBeVisible();
+  const kpi = (name: string) => page.locator(".card").filter({ has: page.getByText(name, { exact: true }) });
+  await expect(kpi("미수(납부일 지남)")).toContainText("1,350,000원");
+  await expect(kpi("보증금 잔액(부채)")).toContainText("43,000,000원");
+  await expect(page.getByText(/입금 검토 대기 4건/)).toBeVisible();
+  await expect(page.getByText(/임차인[A-H]/)).toHaveCount(0);  // 이름 없음
+
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "엑셀" }).click();
+  expect((await download).suggestedFilename()).toBe("roomax-report-2026-09.xlsx");
+
+  await page.getByLabel("보고서 월").fill("2099-01");  // 오지 않은 달 → 안내만, 예전 보고서가 남지 않음
+  await expect(page.getByText("아직 오지 않은 달입니다")).toBeVisible();
+  await expect(page.getByText(/^\d{4}-\d{2} 운영 보고서$/)).toHaveCount(0);
+  await page.getByLabel("보고서 월").fill("2026-09");
+
+  await page.emulateMedia({ media: "print" });
+  await expect(page.getByRole("button", { name: "인쇄·PDF" })).toBeHidden();
+  await expect(page.getByText("2026-09 운영 보고서")).toBeVisible();
 });

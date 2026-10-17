@@ -7,8 +7,8 @@ from app.auth import org_guard
 from app.config import production_problems, settings
 from app.db import engine
 from app.routers import (assets, assistant, auth, backups, bank, bank_alerts, charges, contracts, dashboard, expenses,
-                         internal, leases, members, move_out, notifications, onboarding, payments, rent_sim, routines,
-                         tax_prep, vacancy)
+                         internal, leases, members, monthly_report, move_out, notifications, onboarding, payments,
+                         rent_sim, routines, tax_prep, vacancy)
 
 PRODUCTION = settings.env == "production"
 if PRODUCTION and (problems := production_problems(settings)):
@@ -33,7 +33,7 @@ app.include_router(bank_alerts.public)  # 휴대폰 입금 알림 — 계좌별 
 # 업무 API 는 전부 로그인 필요 + organization_id 가 오면 내 사업장인지 검사 (app/auth.py)
 PROTECTED = [Depends(org_guard)]
 for r in (onboarding, charges, bank, payments, expenses, dashboard, contracts, backups, members, notifications,
-          assets, move_out, leases, tax_prep, rent_sim, bank_alerts, routines, vacancy, assistant):
+          assets, move_out, leases, tax_prep, rent_sim, bank_alerts, routines, vacancy, assistant, monthly_report):
     app.include_router(r.router, dependencies=PROTECTED)
 
 
