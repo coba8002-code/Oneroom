@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, House, Send, Wrench } from "lucide-react";
+import { CalendarDays, House, Megaphone, Phone, Send, Wrench } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, kst, won } from "@/lib/api";
@@ -12,6 +12,8 @@ interface View {
   charges: { period: string; due_date: string; amount: number; paid: number; state: string; state_label: string }[];
   bank_data_as_of: string | null;
   repairs: { reported_on: string; description: string; status: string; completed_on: string | null }[];
+  notices: { title: string; body: string | null; starts_on: string; ends_on: string | null; for_unit: boolean }[];
+  contact: { phone: string | null; note: string | null } | null;
   link_expires_at: string; notice: string;
 }
 
@@ -47,6 +49,20 @@ function Body({ v, token, reload }: { v: View; token: string; reload: () => Prom
   const l = v.lease;
   return (
     <>
+      {v.notices.length > 0 && (
+        <section className="card space-y-2 border-l-4 border-l-blue-500 p-4" aria-labelledby="notices">
+          <h2 id="notices" className="card-title flex items-center gap-1"><Megaphone className="h-4 w-4" />공지</h2>
+          <ul className="space-y-2 text-sm">
+            {v.notices.map((n, i) => (
+              <li key={i}>
+                <b className="break-words">{n.title}</b>{n.for_unit && <span className="chip ml-1 bg-blue-50 text-blue-700">우리 집</span>}
+                {n.body && <p className="whitespace-pre-wrap break-words text-slate-600">{n.body}</p>}
+                <p className="text-xs text-slate-400">{n.starts_on}{n.ends_on ? ` ~ ${n.ends_on}` : ""}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <section className="grid grid-cols-2 gap-3">
         <div className="card col-span-2 p-4">
           <p className="flex items-center gap-1 text-xs text-slate-500"><CalendarDays className="h-3.5 w-3.5" />다음 납부일</p>
@@ -109,7 +125,11 @@ function Repairs({ v, token, reload }: { v: View; token: string; reload: () => P
       <button type="button" className="btn-primary btn-sm" disabled={busy || !text.trim()} onClick={send}>
         <Send className="h-3.5 w-3.5" />수리 요청 보내기</button>
       {msg && <p className={`text-sm ${msg.ok ? "text-emerald-700" : "text-red-700"}`} role="status">{msg.text}</p>}
-      <p className="text-xs text-slate-500">급한 일(누수·가스·전기)은 집주인에게 바로 전화하세요.</p>
+      {v.contact?.phone ? (
+        <p className="flex flex-wrap items-center gap-1 text-sm"><Phone className="h-4 w-4 text-slate-500" />급한 일(누수·가스·전기)은 바로 전화하세요:
+          <a className="font-semibold text-blue-700 underline" href={`tel:${v.contact.phone.replace(/[^\d+]/g, "")}`}>{v.contact.phone}</a>
+          {v.contact.note && <span className="text-xs text-slate-500">({v.contact.note})</span>}</p>
+      ) : <p className="text-xs text-slate-500">급한 일(누수·가스·전기)은 집주인에게 바로 전화하세요.</p>}
       {v.repairs.length > 0 && (
         <ul className="divide-y divide-slate-100 border-t border-slate-100 text-sm">
           {v.repairs.map((r, i) => (
