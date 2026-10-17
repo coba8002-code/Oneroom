@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, aliased
 
 from app.models import Charge, Deposit, Lease, Payment, Property, Tenant, Transaction, TransactionAllocation, Unit
 from app.services import (backup, fixtures, lease_renewal, lease_rules, ledger, receivables, reports, routines,
-                          tax_calendar)
+                          tax_calendar, tenant_portal)
 from app.services.charges import due_date_for
 from app.services.expenses import kst_date
 from app.services.matching import org_transactions
@@ -215,6 +215,10 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
             when = f"{e['days_left']}일 후 만료" if e["days_left"] >= 0 else f"만료 {-e['days_left']}일 지남"
             dep = f", 보증금 {e['deposit_to_return']:,}원 반환 예정" if e["deposit_to_return"] else ""
             add("info", "lease_ending", f"{unit} 계약 {when}{dep}.", "/expenses")
+    if asked := tenant_portal.open_requests(session, organization_id):
+        names = ", ".join(sorted(set(asked)))
+        add("warn", "tenant_repair", f"임차인 수리 요청 {len(asked)}건 ({names}) — 확인하고 처리 상태를 바꿔 주세요.",
+            "/assets?tab=repairs")
     if open_repairs := fixtures.open_repair_count(session, organization_id):
         add("info", "repair_open", f"진행 중인 수리 {open_repairs}건.", "/assets")
     late, soon = routines.due(session, organization_id, as_of)

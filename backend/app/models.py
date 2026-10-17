@@ -460,6 +460,7 @@ class MaintenanceTicket(Base):
     cost: Mapped[int | None] = mapped_column(BigInteger)
     payer: Mapped[str] = mapped_column(String(20), default="undecided")  # 부담: landlord | tenant | undecided
     note: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(20), default="admin", server_default="admin")  # admin | tenant(임차인 링크로 요청)
     created_at: Mapped[datetime] = created_at()
 
 
@@ -631,6 +632,19 @@ class BankAlert(Base):
     status: Mapped[str] = mapped_column(String(20))  # created | duplicate | unparsed | outgoing
     parsed: Mapped[dict | None] = mapped_column(JSON)
     transaction_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("transactions.id"))
+    created_at: Mapped[datetime] = created_at()
+
+
+class TenantLink(Base):
+    """임차인 화면 초대 링크 — 계약마다 하나만 유효. 비밀 토큰은 sha256 만 저장 (원문은 만들 때 한 번만 보여 줌).
+    계약이 끝나거나 만료·회수되면 열리지 않는다."""
+    __tablename__ = "tenant_links"
+    id: Mapped[uuid.UUID] = pk()
+    lease_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leases.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
 
 

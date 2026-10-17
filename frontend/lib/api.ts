@@ -66,6 +66,9 @@ async function errorText(res: Response): Promise<string> {
 }
 
 export const AUTH_PAGES = ["/login", "/signup", "/terms", "/privacy", "/forgot-password", "/reset-password", "/verify-email", "/invite"];
+export const TENANT_PREFIX = "/t/";  // 임차인 화면 — 로그인 없이 초대 링크로 연다
+/** 로그인 없이 여는 화면 (메뉴 없음, 401 이어도 로그인 화면으로 보내지 않음) */
+export const isPublicPage = (path: string) => AUTH_PAGES.includes(path) || path.startsWith(TENANT_PREFIX);
 
 /** 로그인 쿠키를 함께 보내는 fetch. 401 이면 로그인 화면으로 보낸다 (가입·로그인 화면 제외). */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -75,7 +78,7 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   } catch {
     throw new Error(`서버(${API_BASE})에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인하세요.`);
   }
-  if (res.status === 401 && typeof window !== "undefined" && !AUTH_PAGES.includes(window.location.pathname)
+  if (res.status === 401 && typeof window !== "undefined" && !isPublicPage(window.location.pathname)
       && !path.startsWith("/api/v1/auth/")) {
     const next = encodeURIComponent(window.location.pathname + window.location.search);
     window.location.href = `/login?next=${next}`;

@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { API_BASE, AUTH_PAGES, type Me, ROLE_LABEL } from "@/lib/api";
+import { API_BASE, isPublicPage, type Me, ROLE_LABEL, TENANT_PREFIX } from "@/lib/api";
 import { MeContext } from "@/lib/me";
 
 type NavItem = { href: string | null; label: string; icon: LucideIcon };
@@ -166,13 +166,14 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const [drawer, setDrawer] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
   useEffect(() => setDrawer(false), [pathname]);
-  const authPage = AUTH_PAGES.includes(pathname);
+  const authPage = isPublicPage(pathname);
 
   const reload = useCallback(async () => {
+    if (window.location.pathname.startsWith(TENANT_PREFIX)) return;  // 임차인 화면은 관리자 로그인과 무관
     const res = await fetch(`${API_BASE}/api/v1/auth/me`, { credentials: "include" }).catch(() => null);
     if (res?.ok) {
       setMe(await res.json());
-    } else if (res?.status === 401 && !AUTH_PAGES.includes(window.location.pathname)) {
+    } else if (res?.status === 401 && !isPublicPage(window.location.pathname)) {
       window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
     }
   }, []);
