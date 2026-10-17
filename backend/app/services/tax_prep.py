@@ -77,7 +77,7 @@ def delete_receipt(session: Session, r: ExpenseReceipt, user_id) -> None:
 
 
 def expenses_of_year(session: Session, organization_id: uuid.UUID, year: int) -> list[dict]:
-    unit_no = dict(session.execute(select(Unit.id, Unit.unit_no).join(Property, Unit.property_id == Property.id)
+    unit_no = dict(session.execute(select(Unit.id, Unit.label).join(Property, Unit.property_id == Property.id)
                                    .where(Property.organization_id == organization_id)).all())
     rows = list(session.scalars(select(Expense).where(
         Expense.organization_id == organization_id, Expense.spent_on >= date(year, 1, 1),
@@ -95,12 +95,12 @@ def expenses_of_year(session: Session, organization_id: uuid.UUID, year: int) ->
 
 def _deposits_at(session: Session, organization_id: uuid.UUID, day: date) -> list[dict]:
     rows = session.execute(
-        select(Deposit, Unit.unit_no, Tenant.name, Lease.status).join(Lease, Deposit.lease_id == Lease.id)
+        select(Deposit, Unit.label, Tenant.name, Lease.status).join(Lease, Deposit.lease_id == Lease.id)
         .join(Unit, Lease.unit_id == Unit.id).join(Property, Unit.property_id == Property.id)
         .join(Tenant, Lease.tenant_id == Tenant.id)
         .where(Property.organization_id == organization_id, Deposit.received_at.is_not(None),
                Deposit.received_at <= day)
-        .order_by(Unit.unit_no, Deposit.received_at)).all()
+        .order_by(Unit.label, Deposit.received_at)).all()
     return [{"unit_no": u, "tenant_name": n, "amount": int(d.amount), "received_at": d.received_at,
              "returned_at": d.returned_at, "lease_status": st}
             for d, u, n, st in rows if d.returned_at is None or d.returned_at > day]

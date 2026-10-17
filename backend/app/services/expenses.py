@@ -94,7 +94,7 @@ def _rules(session: Session, organization_id: uuid.UUID) -> dict[str, ExpenseRul
 def _org_leases(session: Session, organization_id: uuid.UUID) -> list[tuple[Lease, str, str]]:
     """보증금 반환은 종료된 계약에도 일어나므로 상태와 무관하게."""
     return session.execute(
-        select(Lease, Unit.unit_no, Tenant.name)
+        select(Lease, Unit.label, Tenant.name)
         .join(Unit, Lease.unit_id == Unit.id)
         .join(Property, Unit.property_id == Property.id)
         .join(Tenant, Lease.tenant_id == Tenant.id)

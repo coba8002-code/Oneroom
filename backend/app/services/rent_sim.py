@@ -53,9 +53,9 @@ def _add_months(d: date, n: int) -> tuple[int, int]:
 
 def baseline(session: Session, organization_id: uuid.UUID) -> list[dict]:
     rows = session.execute(
-        select(Lease, Unit.unit_no, Tenant.name).join(Unit, Lease.unit_id == Unit.id)
+        select(Lease, Unit.label, Tenant.name).join(Unit, Lease.unit_id == Unit.id)
         .join(Property, Unit.property_id == Property.id).join(Tenant, Lease.tenant_id == Tenant.id)
-        .where(Property.organization_id == organization_id, Lease.status == "active").order_by(Unit.unit_no)).all()
+        .where(Property.organization_id == organization_id, Lease.status == "active").order_by(Unit.label)).all()
     return [{"lease_id": str(le.id), "unit_no": u, "tenant_name": n, "deposit": int(le.deposit), "rent": int(le.rent),
              "end_date": le.end_date} for le, u, n in rows]
 

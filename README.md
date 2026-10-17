@@ -276,6 +276,13 @@ npm run dev                     # http://localhost:3000/onboarding
 - 비용 보호: 사업장당 하루 질문 수 상한(`ROOMAX_AI_DAILY_LIMIT`, 기본 50), 응답 깊이 낮음(effort low), 안전 분류기 거절 시 서버 측 대체 모델(fallbacks)
 - 키가 없으면 화면에 '연결 안 됨' 안내만 (다른 기능 영향 없음)
 
+## 건물 여러 동
+
+- '건물·호실 등록'을 다시 하면 건물이 추가됩니다. 월세 받는 통장은 기존 통장을 함께 쓰거나 새로 등록
+- 건물이 2개 이상이면 홈·임대료·계약·자산·공실·메시지·AI 비서 등 **모든 화면에서 호실을 '건물 이름 + 호실'**(예: `행복빌라 2동 101`)로 표시 — 건물이 하나면 지금처럼 `101`
+- 사업장 안에서 건물 이름은 겹칠 수 없음 (호실 구분의 기준)
+- 합계(홈 수입·미납·결산·세무 준비)는 사업장 전체 기준
+
 ## 브라우저 시험 (`e2e/`)
 
 실제 PostgreSQL·API·화면을 띄워 브라우저(Playwright)로 핵심 흐름을 확인합니다. GitHub Actions 의 `e2e` 작업이 PR 마다 실행하고,
@@ -285,6 +292,7 @@ npm run dev                     # http://localhost:3000/onboarding
 - 입금 알림 연결 주소 → 로그인 없이 보낸 알림 → 홈 '오늘 납부일' 입금 확인 (틀린 주소 404)
 - 정기 점검 추가 → 했음 기록 → 다음 예정일 → 되돌리기 / 공실 → 모집 조건 → 광고 문구 / AI 비서 '연결 안 됨'
 - 휴대폰 폭 390px 에서 주요 화면 10개 가로 넘침 없음
+- 건물 두 동: 같은 통장 함께 쓰기, '건물 이름 + 호실' 표시, 같은 건물 이름 거절
 
 로컬: `cd frontend && ROOMAX_API_ORIGIN=http://127.0.0.1:8000 npm run build`, `cd e2e && npm ci && npx playwright install chromium`,
 `ROOMAX_DATABASE_URL=postgresql://…/roomax_e2e npx playwright test` (서버는 시험이 직접 띄움, 백엔드 파이썬은 `E2E_PYTHON` 으로 지정)

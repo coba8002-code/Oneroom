@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useMe } from "@/lib/me";
 import {
   api,
   type ChargeOut,
@@ -92,6 +93,17 @@ export default function OnboardingPage() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<OnboardingOut | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const { me } = useMe();
+  // 두 번째 건물부터: 이미 있는 통장을 함께 쓸지 (기본 = 첫 통장), 새 통장을 만들지
+  const [accounts, setAccounts] = useState<{ id: string; alias: string }[]>([]);
+  const [accountId, setAccountId] = useState("");
+  useEffect(() => {
+    const org = me?.organization.id;
+    if (!org) return;
+    api<{ id: string; alias: string }[]>(`/api/v1/bank-accounts?organization_id=${org}`)
+      .then((a) => { setAccounts(a); setAccountId(a[0]?.id ?? ""); })
+      .catch(() => setAccounts([]));
+  }, [me]);
 
   const update = (key: number, patch: Partial<UnitRow>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -126,6 +138,7 @@ export default function OnboardingPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           property: { name: propertyName.trim(), address: strOrNull(address) },
+          bank_account_id: accountId || null,
           units: filled.map(toPayload),
         }),
       });
@@ -166,6 +179,21 @@ export default function OnboardingPage() {
           <span className="mb-1 block text-slate-600">주소 (선택)</span>
           <input className={input} value={address} onChange={(e) => setAddress(e.target.value)} />
         </label>
+        {accounts.length > 0 && (
+          <>
+            <label className="text-sm">
+              <span className="mb-1 block text-slate-600">월세 받는 통장</span>
+              <select className={input} aria-label="월세 받는 통장" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.alias} (함께 쓰기)</option>)}
+                <option value="">새 통장 따로 등록</option>
+              </select>
+            </label>
+            <p className="self-end text-xs text-slate-500">
+              두 번째 건물부터는 모든 화면에서 호실이 &lsquo;건물 이름 + 호실&rsquo;(예: {propertyName.trim() || "행복빌라 2동"} 101)로 표시됩니다.
+              건물 이름은 서로 달라야 합니다.
+            </p>
+          </>
+        )}
       </section>
 
       <section className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm">

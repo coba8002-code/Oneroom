@@ -214,7 +214,7 @@ def fixture_out(f: Fixture, unit_no: str | None, as_of: date, stats: dict) -> di
 def list_fixtures(session: Session, organization_id: uuid.UUID, as_of: date, *,
                   unit_id: uuid.UUID | None = None, common_only: bool = False,
                   include_removed: bool = False) -> list[dict]:
-    q = (select(Fixture, Unit.unit_no).join(Property, Fixture.property_id == Property.id)
+    q = (select(Fixture, Unit.label).join(Property, Fixture.property_id == Property.id)
          .outerjoin(Unit, Fixture.unit_id == Unit.id).where(Property.organization_id == organization_id))
     if unit_id is not None:
         q = q.where(Fixture.unit_id == unit_id)
@@ -345,7 +345,7 @@ def delete_repair(session: Session, t: MaintenanceTicket, user_id) -> None:
 
 def list_repairs(session: Session, organization_id: uuid.UUID, *, status: str | None = None,
                  fixture_id: uuid.UUID | None = None) -> list[dict]:
-    q = (select(MaintenanceTicket, Unit.unit_no, Fixture.name, Fixture.category)
+    q = (select(MaintenanceTicket, Unit.label, Fixture.name, Fixture.category)
          .join(Property, MaintenanceTicket.property_id == Property.id)
          .outerjoin(Unit, MaintenanceTicket.unit_id == Unit.id)
          .outerjoin(Fixture, MaintenanceTicket.fixture_id == Fixture.id)
