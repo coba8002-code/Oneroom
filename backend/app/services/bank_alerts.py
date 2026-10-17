@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import secrets
 import uuid
@@ -22,7 +23,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AuditLog, BankAccount, BankAlert, Transaction
@@ -30,6 +31,8 @@ from app.services import matching
 
 KST = ZoneInfo("Asia/Seoul")
 MAX_TEXT = 2000
+RATE_WINDOW = timedelta(minutes=10)
+RATE_LIMIT = int(os.getenv("ROOMAX_ALERT_RATE_LIMIT", "30"))  # 계좌당 10분에 받는 알림 수 (주소 노출 시 대량 투입 방지)
 DUPLICATE_WINDOW = timedelta(minutes=2)  # 같은 알림이 두 번 오는 경우 (문자 + 앱 푸시, 자동화 재시도)
 
 IN_WORDS = ("입금",)
@@ -47,6 +50,10 @@ NOISE = {
 
 
 class AlertError(ValueError):
+    pass
+
+
+class RateLimited(AlertError):
     pass
 
 
@@ -225,6 +232,10 @@ def receive(session: Session, account: BankAccount, text: str, received_at: date
     if len(text) > MAX_TEXT:
         raise AlertError(f"알림 문장이 너무 깁니다 ({MAX_TEXT}자 이하)")
     received_at = received_at or datetime.now(timezone.utc)
+    recent_count = session.scalar(select(func.count()).select_from(BankAlert).where(
+        BankAlert.bank_account_id == account.id, BankAlert.created_at >= received_at - RATE_WINDOW))
+    if recent_count >= RATE_LIMIT:
+        raise RateLimited("잠시 뒤 다시 보내 주세요 (짧은 시간에 알림이 너무 많습니다)")
     p = parse(text, received_at)
     alert = BankAlert(bank_account_id=account.id, text=text, parsed=p.as_dict(), status="unparsed")
     session.add(alert)

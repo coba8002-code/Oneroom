@@ -60,13 +60,21 @@ export default function Privacy() {
           <tr><td>클라우드 서버 제공자 (현재: 운영자가 관리하는 서버 — 상용화 시 업체명 기재)</td><td>서버·데이터베이스·파일 보관</td><td>항상</td></tr>
           <tr><td>네이버클라우드㈜ (CLOVA OCR)</td><td>계약서 이미지의 글자 인식</td><td>회원이 계약서를 올리고 OCR이 켜져 있을 때</td></tr>
           <tr><td>메일 발송 업체 (설정한 경우 업체명 기재)</td><td>이메일 확인·비밀번호 재설정·초대 메일 발송</td><td>메일 발송을 설정했을 때</td></tr>
+          <tr><td>Anthropic, PBC (Claude API)</td><td>AI 비서 답변 생성</td><td>회원이 AI 비서에 질문할 때 (서버에 키를 넣은 경우)</td></tr>
           <tr><td>메시지 발송 업체 (카카오 알림톡 — 연결 시 업체명 기재)</td><td>회원이 승인한 임차인 안내 메시지 발송</td><td>연결했을 때 (현재 연결 안 됨)</td></tr>
         </tbody></table>
         <p className="text-sm text-slate-500">위탁 계약에서 목적 외 처리 금지, 안전성 확보 조치, 재위탁 제한, 관리·감독, 손해배상 책임을 정하고, 수탁자가 바뀌면 이 방침으로 알립니다.</p></section>
 
       <section><h2>제7조 (국외 이전)</h2>
-        <p>현재 개인정보를 국외로 이전하지 않습니다. 서버·발송 업체가 국외에서 처리하게 되면 이전 항목·국가·시기와 방법·받는 자·목적과 보유 기간·
-          거부 방법과 효과를 이 방침에 공개하고 알립니다 (법 제28조의8).</p></section>
+        <p>AI 비서를 쓸 때만 아래와 같이 국외로 이전합니다 (법 제28조의8). 그 밖에는 국외로 이전하지 않으며, 서버·발송 업체가 국외에서
+          처리하게 되면 같은 항목을 이 방침에 공개하고 알립니다.</p>
+        <table><tbody>
+          <tr><th>이전 항목</th><td>회원이 입력한 질문 문장, 질문에 답하려고 조회한 장부 수치(호실 번호·금액·날짜·건수). 임차인 이름·연락처·입금자명·메모는 보내지 않도록 만들어져 있습니다 (질문에 직접 적은 내용은 그대로 전송).</td></tr>
+          <tr><th>이전 국가·받는 자</th><td>미국 · Anthropic, PBC (Claude API)</td></tr>
+          <tr><th>시기·방법</th><td>질문할 때마다, 암호화된 통신(HTTPS)으로 전송</td></tr>
+          <tr><th>목적·보유 기간</th><td>답변 생성. 받는 자의 API 데이터 보관 정책에 따른 기간 뒤 삭제 (운영자는 질문 원문을 저장하지 않음)</td></tr>
+          <tr><th>거부 방법과 효과</th><td>AI 비서를 쓰지 않으면 이전되지 않습니다. 쓰지 않아도 다른 기능은 그대로 이용할 수 있습니다.</td></tr>
+        </tbody></table></section>
 
       <section><h2>제8조 (정보주체와 법정대리인의 권리·행사 방법)</h2>
         <ul>
@@ -111,7 +119,8 @@ export default function Privacy() {
       <section><h2>제14조 (시행일과 변경)</h2>
         <p>이 방침은 {LEGAL.effectiveDate}부터 적용합니다. 내용이 바뀌면 시행 7일 전(이용자에게 불리한 변경은 30일 전)에 서비스 안에 알립니다.</p>
         <h3>변경 이력</h3>
-        <ul><li>{LEGAL.version} ({LEGAL.effectiveDate}) — 최초 시행</li></ul></section>
+        <ul><li>1.0 ({LEGAL.effectiveDate}) — 최초 시행</li>
+          <li>{LEGAL.privacyVersion} ({LEGAL.effectiveDate}) — AI 비서 국외 이전(제7조)·처리 위탁(제6조) 추가</li></ul></section>
     </LegalDoc>
   );
 }

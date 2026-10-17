@@ -52,6 +52,8 @@ async def receive(token: str, request: Request, session: Session = Depends(get_s
         raise HTTPException(413, "본문이 너무 큽니다")
     try:
         alert = svc.receive(session, account, _text(raw, request.headers.get("content-type", "")))
+    except svc.RateLimited as e:
+        raise HTTPException(429, str(e)) from e
     except svc.AlertError as e:
         raise HTTPException(422, str(e)) from e
     return {"ok": True, "status": alert.status}
