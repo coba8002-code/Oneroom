@@ -15,6 +15,11 @@ const STATUS: Record<Recent["status"], [string, string]> = {
   unparsed: ["읽지 못함", "bg-amber-50 text-amber-700"],
   outgoing: ["출금 (무시)", "bg-slate-100 text-slate-600"],
 };
+// 은행 대표 고객센터 (입출금 알림 신청 문의용)
+const BANKS: [string, string][] = [
+  ["KB국민", "1588-9999"], ["신한", "1577-8000"], ["우리", "1588-5000"], ["하나", "1588-1111"], ["NH농협", "1588-2100"],
+  ["IBK기업", "1566-2566"], ["카카오뱅크", "1599-3333"], ["토스뱅크", "1661-7654"], ["케이뱅크", "1522-1000"],
+];
 const SAMPLE = "[KB]\n123456**789\n홍길동\n입금\n450,000\n잔액12,876,500";
 
 export default function BankAlertCard({ orgId, canWrite }: { orgId: string; canWrite: boolean }) {
@@ -116,22 +121,46 @@ export default function BankAlertCard({ orgId, canWrite }: { orgId: string; canW
             </div>
           )}
 
-          <details className="rounded-xl border border-slate-100 p-3">
-            <summary className="cursor-pointer font-medium">안드로이드 — MacroDroid (무료)</summary>
+          <details className="rounded-xl border border-slate-100 p-3" open={!account?.alert_since}>
+            <summary className="cursor-pointer font-medium">1단계 — 은행에서 입금 알림 켜기</summary>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-600">
-              <li>트리거: <b>알림 수신</b> → 은행 앱 선택 (또는 <b>SMS 수신</b> → 은행 번호)</li>
-              <li>제약(선택): 알림 내용에 &lsquo;입금&rsquo; 포함</li>
-              <li>동작: <b>HTTP 요청</b> · 방식 POST · 위 주소 · 본문 형식 application/json</li>
-              <li>본문: <code className="rounded bg-slate-100 px-1">{`{"text": "[notification_title] [notification]"}`}</code> (문자면 <code className="rounded bg-slate-100 px-1">[sms_message]</code>) — 매직 텍스트 이름은 앱 버전에 따라 다를 수 있습니다</li>
-              <li>배터리 최적화에서 MacroDroid 제외</li>
+              <li>월세 받는 통장의 <b>은행 앱</b>을 휴대폰에 설치하고 로그인합니다.</li>
+              <li>앱의 <b>설정 → 알림</b>(은행마다 &lsquo;알림 설정&rsquo;·&lsquo;입출금 알림&rsquo;·&lsquo;금융알림&rsquo; 등)에서 그 계좌의 <b>입금 알림</b>을 켭니다.
+                앱 푸시 알림은 대개 무료, <b>문자(SMS) 알림은 은행·등급에 따라 월 이용료</b>가 있습니다.</li>
+              <li><b>금액 표시</b>를 켜 둡니다. 개인정보 보호로 &lsquo;새 알림이 있습니다&rsquo;처럼 금액을 숨기면 읽을 수 없습니다.</li>
+              <li><b>알림 기준 금액</b>(얼마 이상만 알림)이 있으면 가장 작은 월세보다 낮게 둡니다.</li>
+              <li>휴대폰 설정 → 앱 → 은행 앱 → <b>알림 허용</b>, 방해금지·절전에서 은행 앱 예외.</li>
+              <li>아이폰은 2단계에서 문자만 쓸 수 있으므로 <b>입출금 문자 알림</b>을 신청합니다 (앱·인터넷뱅킹·고객센터·영업점).</li>
+              <li>메뉴 이름·요금은 은행 앱 버전마다 달라질 수 있습니다. 찾기 어려우면 은행 고객센터에 &lsquo;입출금 알림 신청&rsquo;을 문의하세요:
+                <span className="block text-xs">{BANKS.map(([n, t]) => `${n} ${t}`).join(" · ")}</span></li>
             </ol>
           </details>
           <details className="rounded-xl border border-slate-100 p-3">
-            <summary className="cursor-pointer font-medium">아이폰 — 단축어 (문자 알림만)</summary>
+            <summary className="cursor-pointer font-medium">2단계 — 안드로이드: MacroDroid (무료)</summary>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-600">
-              <li>아이폰은 다른 앱의 푸시 알림을 읽을 수 없어 <b>은행 입출금 문자 알림</b>을 신청해야 합니다 (은행에 따라 유료).</li>
-              <li>단축어 → 자동화 → <b>메시지</b> · 보낸 사람: 은행 번호 · 메시지에 &lsquo;입금&rsquo; 포함 · <b>즉시 실행</b></li>
-              <li>동작: <b>URL 콘텐츠 가져오기</b> · 위 주소 · 방법 POST · 본문 JSON · 키 <code className="rounded bg-slate-100 px-1">text</code> = 단축어 입력(메시지 내용)</li>
+              <li>Play 스토어에서 MacroDroid 설치 → 처음 실행 때 <b>알림 접근 권한</b> 허용</li>
+              <li>매크로 추가 → 트리거: <b>알림 수신</b> → 은행 앱 선택 (문자로 받으면 <b>SMS 수신</b> → 은행 번호)</li>
+              <li>제약(선택): 알림 내용에 &lsquo;입금&rsquo; 포함</li>
+              <li>동작: <b>HTTP 요청</b> · 방식 POST · 위 연결 주소 · 본문 형식 application/json</li>
+              <li>본문: <code className="rounded bg-slate-100 px-1">{`{"text": "[notification_title] [notification]"}`}</code> (문자면 <code className="rounded bg-slate-100 px-1">[sms_message]</code>) — 매직 텍스트 이름은 앱 버전에 따라 다를 수 있으니 목록에서 &lsquo;알림 내용&rsquo;을 고르세요</li>
+              <li>휴대폰 설정 → 배터리 최적화에서 <b>MacroDroid 제외</b> (꺼 두면 알림을 놓칩니다)</li>
+            </ol>
+          </details>
+          <details className="rounded-xl border border-slate-100 p-3">
+            <summary className="cursor-pointer font-medium">2단계 — 아이폰: 단축어 (문자 알림만)</summary>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-600">
+              <li>아이폰은 다른 앱의 푸시 알림을 읽을 수 없어 1단계의 <b>은행 입출금 문자 알림</b>이 필요합니다.</li>
+              <li>단축어 앱 → 자동화 → 새 자동화 → <b>메시지</b> · 보낸 사람: 은행 문자 번호 · 메시지에 &lsquo;입금&rsquo; 포함 · <b>즉시 실행</b></li>
+              <li>동작: <b>URL 콘텐츠 가져오기</b> · 위 연결 주소 · 방법 POST · 요청 본문 JSON · 키 <code className="rounded bg-slate-100 px-1">text</code> = 단축어 입력(메시지 내용)</li>
+            </ol>
+          </details>
+          <details className="rounded-xl border border-slate-100 p-3">
+            <summary className="cursor-pointer font-medium">3단계 — 시험</summary>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-600">
+              <li>다른 계좌에서 이 통장으로 <b>소액(예: 1,000원)</b>을 보냅니다.</li>
+              <li>몇 초 안에 이 카드의 <b>최근 받은 알림</b>에 &lsquo;거래로 넣음&rsquo;이 보이면 연결 완료 (수납 화면에서는 검토 대기 — &lsquo;기타&rsquo;로 확정하세요).</li>
+              <li>&lsquo;읽지 못함&rsquo;이면 그 알림 문장을 이 카드의 &lsquo;알림 문장 시험&rsquo;에 붙여 넣어 확인하고, 이름·금액을 바꿔 알려 주시면 형식을 추가합니다.</li>
+              <li>아무것도 안 오면: 은행 앱 알림이 휴대폰에 뜨는지 → 자동화 앱 실행 기록 → 주소를 새로 복사했는지 순서로 확인하세요.</li>
             </ol>
           </details>
           <p className="text-xs text-slate-500">알림은 &lsquo;들어왔다&rsquo;는 증거일 뿐이라, 알림이 없다고 미납으로 보지 않습니다. 미납·결산은 지금처럼 통장 내역 파일로 판단하고,
