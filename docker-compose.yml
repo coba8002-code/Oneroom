@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: roomax
+      POSTGRES_PASSWORD: roomax
+      POSTGRES_DB: roomax
+    ports:
+      - "5432:5432"
+    volumes:
+      - roomax_pg:/var/lib/postgresql/data
+
+volumes:
+  roomax_pg:

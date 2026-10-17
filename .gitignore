@@ -8,3 +8,7 @@ node_modules/
 .next/
 next-env.d.ts
 uploads/
+*.tsbuildinfo
+backups/
+mail_outbox/
+deploy/.env
