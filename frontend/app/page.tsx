@@ -4,6 +4,7 @@ import {
   AlertCircle,
   ArrowDownToLine,
   Bell,
+  BellRing,
   CalendarClock,
   CalendarDays,
   ChevronRight,
@@ -93,6 +94,14 @@ export default function Home() {
     }
   }, [orgId, asOf]);
   useEffect(() => { reload(); }, [reload]);
+  // 오늘 화면을 열어 두면 1분마다 다시 읽는다 (휴대폰 입금 알림이 들어오면 바로 반영). 다른 탭에 있을 땐 쉼
+  useEffect(() => {
+    if (asOf !== todayKst()) return;
+    const tick = () => { if (document.visibilityState === "visible") reload(); };
+    const timer = window.setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", tick); };
+  }, [asOf, reload]);
 
   async function generateCharges() {
     if (!d) return;
@@ -181,6 +190,8 @@ function DashboardBody({ d, busy, onGenerate }: { d: Dashboard; busy: boolean; o
         <Kpi icon={TrendingUp} tone="noi" label={d.money.complete ? "순운영수익" : "순운영수익 (확정 전)"}
           value={won(d.money.noi)} sub={d.money.bank_covered ? "확인된 입금 − 운영비" : "은행 내역을 가져오면 계산"} href="/expenses" wide />
       </section>
+
+      {d.due_today.length > 0 && <DueTodayCard d={d} />}
 
       <section className="grid gap-4 xl:grid-cols-12">
         <UnitsCard d={d} />
@@ -485,6 +496,43 @@ function QuickActions() {
         ))}
       </div>
     </div>
+  );
+}
+
+const DUE_TODAY: Record<Dashboard["due_today"][number]["status"], [string, string]> = {
+  paid: ["입금 확인", "bg-emerald-50 text-emerald-700"],
+  partial: ["일부 입금", "bg-amber-50 text-amber-700"],
+  review: ["입금 검토 대기", "bg-amber-50 text-amber-700"],
+  not_yet: ["아직 확인 안 됨", "bg-slate-100 text-slate-600"],
+};
+
+function DueTodayCard({ d }: { d: Dashboard }) {
+  const done = d.due_today.filter((x) => x.status === "paid").length;
+  const hhmm = (iso: string) => new Date(iso).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false });
+  return (
+    <section className="card p-4 sm:p-5" aria-labelledby="due-today">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="due-today" className="card-title flex items-center gap-2">
+          <BellRing className="h-4 w-4 text-blue-500" />오늘 납부일 <span className="text-sm font-normal text-slate-500">{done}/{d.due_today.length} 입금 확인</span>
+        </h2>
+        <a href="/settings#bank-alerts" className="text-xs text-blue-700 hover:underline">휴대폰 입금 알림 연결</a>
+      </div>
+      <ul className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        {d.due_today.map((x) => {
+          const [label, tone] = DUE_TODAY[x.status];
+          return (
+            <li key={x.unit_no + x.period} className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 px-3 py-2">
+              <span className="min-w-0"><b className="font-semibold">{x.unit_no}호</b> <span className="text-slate-500">{x.tenant_name}</span>
+                <span className="block text-xs text-slate-500 tabular-nums">{won(x.amount)}{x.status === "partial" && ` 중 ${won(x.paid)}`}
+                  {x.paid_at && ` · ${hhmm(x.paid_at)} ${x.via === "alert" ? "알림" : "통장 내역"}`}</span></span>
+              {x.status === "review" ? <a href="/payments" className={`chip shrink-0 ${tone}`}>{label}</a>
+                : <span className={`chip shrink-0 ${tone}`}>{label}</span>}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2 text-xs text-slate-500">알림이 안 왔다고 미납은 아닙니다 — 미납 판단은 통장 내역으로 하세요. 화면을 열어 두면 1분마다 새로 고칩니다.</p>
+    </section>
   );
 }
 

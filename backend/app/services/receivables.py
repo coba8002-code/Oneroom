@@ -24,7 +24,9 @@ def unconfirmed_count(session: Session, organization_id: uuid.UUID, direction: s
 
 
 def latest_transaction_at(session: Session, organization_id: uuid.UUID):
-    return session.scalar(org_transactions(organization_id).with_only_columns(func.max(Transaction.occurred_at)))
+    """통장 내역 파일이 어디까지 있나. 입금 알림은 '안 들어왔다'의 증거가 아니라 넣지 않는다."""
+    return session.scalar(org_transactions(organization_id).where(Transaction.source == "statement")
+                          .with_only_columns(func.max(Transaction.occurred_at)))
 
 
 def compute(session: Session, organization_id: uuid.UUID, as_of: date) -> ReceivablesOut:

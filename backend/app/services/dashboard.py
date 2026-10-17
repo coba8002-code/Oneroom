@@ -54,6 +54,32 @@ def _recent(session: Session, organization_id, unit_by_lease: dict) -> list[dict
                     "label": label, "confirmed": bool(allocs)})
     return out
 
+def _due_today(session: Session, leases: dict, units: list, as_of: date) -> list[dict]:
+    """오늘이 납부일인 청구와 입금 상태. 입금 알림이 들어오면 바로 '입금 확인'으로 바뀐다.
+    안 들어왔다고 미납으로 단정하지 않는다 — 'not_yet'(아직 확인된 입금 없음)일 뿐."""
+    out = []
+    unit_no = {u.id: u.unit_no for u in units}
+    for lease, name in leases.values():
+        for c in session.scalars(select(Charge).where(Charge.lease_id == lease.id, Charge.due_date == as_of,
+                                                      Charge.status != "waived")):
+            paid = ledger.paid_amount(session, c.id)
+            last = session.execute(
+                select(Transaction.occurred_at, Transaction.source)
+                .join(TransactionAllocation, TransactionAllocation.transaction_id == Transaction.id)
+                .join(Payment, Payment.transaction_allocation_id == TransactionAllocation.id)
+                .where(Payment.charge_id == c.id).order_by(Transaction.occurred_at.desc()).limit(1)).first()
+            review = session.scalar(select(func.count()).select_from(TransactionAllocation).where(
+                TransactionAllocation.lease_id == lease.id, TransactionAllocation.review_status == "pending",
+                TransactionAllocation.category == "rent"))
+            status = ("paid" if paid >= c.amount else "partial" if paid > 0
+                      else "review" if review else "not_yet")
+            out.append({"unit_no": unit_no[lease.unit_id], "tenant_name": name, "period": c.period,
+                        "amount": c.amount, "paid": paid, "status": status,
+                        "paid_at": last[0] if last else None, "via": last[1] if last else None,
+                        "review_count": review})
+    return sorted(out, key=lambda x: x["unit_no"])
+
+
 STALE_BANK_DAYS = 7
 LEASE_END_WINDOW = 60  # 보증금 반환 준비 안내
 NOTICE_PREVIEW_DAYS = 30  # 통지 기간이 열리기 이만큼 전부터 미리 알림
@@ -236,6 +262,7 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
             session, organization_id,
             {lease.id: next(u.unit_no for u in units if u.id == lease.unit_id) for lease, _ in leases.values()}),
         "due_soon": due_soon,
+        "due_today": _due_today(session, leases, units, as_of),
         "lease_endings": lease_endings,
         "tax_events": tax_calendar.upcoming(as_of),
         "attention": attention,

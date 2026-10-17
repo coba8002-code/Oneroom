@@ -212,6 +212,9 @@ class BankAccount(Base):
     id: Mapped[uuid.UUID] = pk()
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
     alias: Mapped[str] = mapped_column(String(100))
+    # 입금 알림 연결 주소의 비밀 토큰 (sha256 만 저장 — 원문은 만들 때 한 번만 보여 줌)
+    alert_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    alert_token_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
 
 
@@ -232,6 +235,9 @@ class Transaction(Base):
     balance_after: Mapped[int | None] = mapped_column(BigInteger)
     fingerprint: Mapped[str] = mapped_column(String(64))
     import_batch: Mapped[str | None] = mapped_column(String(64))
+    # statement: 통장 내역 파일(CSV/XLSX) · alert: 휴대폰 입금 알림. 알림은 '들어왔다'의 증거일 뿐
+    # '안 들어왔다'의 증거가 아니므로, 은행 내역이 어디까지 있는지(미납 판단·결산)는 statement 만 본다
+    source: Mapped[str] = mapped_column(String(10), default="statement", server_default="statement")
     created_at: Mapped[datetime] = created_at()
 
 
@@ -533,6 +539,18 @@ class ExpenseReceipt(Base):
     size: Mapped[int] = mapped_column(Integer)
     sha256: Mapped[str] = mapped_column(String(64))
     original_name: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = created_at()
+
+
+class BankAlert(Base):
+    """받은 입금 알림 원문과 처리 결과 (형식 보강·문제 확인용)."""
+    __tablename__ = "bank_alerts"
+    id: Mapped[uuid.UUID] = pk()
+    bank_account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bank_accounts.id"), index=True)
+    text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20))  # created | duplicate | unparsed | outgoing
+    parsed: Mapped[dict | None] = mapped_column(JSON)
+    transaction_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("transactions.id"))
     created_at: Mapped[datetime] = created_at()
 
 

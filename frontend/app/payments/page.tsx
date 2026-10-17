@@ -113,7 +113,10 @@ export default function PaymentsPage() {
         fd.append("file", file);
         const r = await api<ImportOut>(`/api/v1/bank-accounts/${accountId}/import`, { method: "POST", body: fd });
         const errs = r.errors.length ? ` · 읽지 못한 행 ${r.errors.length}개 (${r.errors.slice(0, 3).map((e) => `${e.row}행`).join(", ")}${r.errors.length > 3 ? " …" : ""})` : "";
-        return `${file.name}: 전체 ${r.total_rows}건 · 새로 저장 ${r.inserted} · 이미 있음 ${r.duplicates}${errs}. 이어서 '입금 매칭 실행'을 누르세요.`;
+        const merged = r.merged_alerts ? ` · 입금 알림과 합침 ${r.merged_alerts}` : "";
+        const orphan = r.alerts_without_statement
+          ? ` ⚠ 이 기간의 입금 알림 ${r.alerts_without_statement}건이 내역에 없습니다 — 다른 계좌 알림이거나 잘못 읽은 알림일 수 있으니 확인하세요.` : "";
+        return `${file.name}: 전체 ${r.total_rows}건 · 새로 저장 ${r.inserted} · 이미 있음 ${r.duplicates}${merged}${errs}. 이어서 '입금 매칭 실행'을 누르세요.${orphan}`;
       })} />
 
       {notice && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}

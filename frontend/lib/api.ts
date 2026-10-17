@@ -44,6 +44,8 @@ export interface ImportOut {
   inserted: number;
   duplicates: number;
   errors: RowError[];
+  merged_alerts?: number;  // 입금 알림으로 먼저 들어온 거래와 합친 줄
+  alerts_without_statement?: number;  // 파일 기간 안인데 내역에 짝이 없는 알림 거래
 }
 
 /** FastAPI 오류(detail 문자열 또는 검증 오류 배열)를 사람이 읽을 문장으로 */
@@ -238,6 +240,7 @@ export const kst = (iso: string | null) =>
 export interface BankAccount {
   id: string;
   alias: string;
+  alert_since: string | null;  // 입금 알림 연결 주소를 만든 시각
 }
 
 export interface Dashboard {
@@ -273,6 +276,12 @@ export interface Dashboard {
   };
   recent_transactions: { occurred_at: string; direction: "in" | "out"; amount: number; label: string; confirmed: boolean }[];
   due_soon: { unit_no: string; due_date: string; outstanding: number }[];
+  /** 오늘이 납부일인 청구. not_yet = 아직 확인된 입금 없음 (미납 단정 아님) */
+  due_today: {
+    unit_no: string; tenant_name: string; period: string; amount: number; paid: number;
+    status: "paid" | "partial" | "review" | "not_yet"; paid_at: string | null; via: "alert" | "statement" | null;
+    review_count: number;
+  }[];
   lease_endings: {
     unit_no: string; tenant_name: string; end_date: string; days_left: number; deposit_to_return: number | null;
     stage: "early" | "open" | "closed" | "ended"; notice_from: string; notice_until: string; notice_sent_on: string | null;

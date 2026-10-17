@@ -16,7 +16,8 @@ from tests.conftest import PASSWORD
 # 로그인 없이 쓰는 경로 (메일 링크는 다른 기기에서 열 수 있고, 비밀번호를 잊은 사람은 로그인할 수 없으므로)
 PUBLIC = {"/api/v1/health", "/api/v1/internal/cron/daily", "/api/v1/auth/signup", "/api/v1/auth/login", "/api/v1/auth/logout",
           "/api/v1/auth/verify-email", "/api/v1/auth/password-reset/request", "/api/v1/auth/password-reset/confirm",
-          "/api/v1/auth/invitation/preview", "/api/v1/auth/invitation/accept", "/api/v1/auth/signup-status"}
+          "/api/v1/auth/invitation/preview", "/api/v1/auth/invitation/accept", "/api/v1/auth/signup-status",
+          "/api/v1/bank-alerts/hook/{token}"}  # 계좌별 비밀 토큰으로 보호 (test_bank_alerts)
 
 
 def _signup(c, **kw):
