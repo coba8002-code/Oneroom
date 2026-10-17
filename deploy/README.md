@@ -40,7 +40,9 @@
   **예산 알림(예: 1달러)** 을 꼭 걸어 두세요.
 - A1 생성 시 "Out of host capacity" 가 나오면 시간을 두고 다시 시도합니다.
 
-순서:
+**단계별 안내: [oracle-guide.md](./oracle-guide.md)** — 서버 안에서는 `bash install.sh` 한 번으로 Docker 설치·방화벽·비밀값 생성·실행까지 합니다.
+
+요약:
 
 1. Oracle Cloud 가입(홈 리전 서울) → Pay As You Go 전환 → 예산 알림 설정
 2. 인스턴스 만들기: Ubuntu 24.04, 형태 `VM.Standard.A1.Flex` 2 OCPU · 12GB, 공인 IP 할당
