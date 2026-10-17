@@ -24,6 +24,8 @@ const nextConfig = {
     async headers() {
       return [
         { source: "/:path*", headers: securityHeaders },
+        // 서비스 워커는 항상 새로 받아 오게 (배포하면 바로 바뀌도록)
+        { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }] },
         // 임차인 화면 주소에는 비밀 토큰이 들어 있다 — 검색 제외, 다른 사이트에 주소를 넘기지 않음
         { source: "/t/:path*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }, { key: "X-Robots-Tag", value: "noindex" }] },
       ];

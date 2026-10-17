@@ -258,3 +258,29 @@ test("임차인 공지·연락처: 공지 올리기·연락처 저장 → 임차
   await expect(tenant.locator("section[aria-labelledby=notices]")).toHaveCount(0);
   await ctx.close();
 });
+
+test("홈 화면 앱(PWA): 설치 정보 · 연결이 끊기면 안내 화면 · 장부 응답은 저장하지 않음", async ({ page, errors }) => {
+  await signupAndOnboard(page);
+  const manifest = await (await page.request.get("/manifest.webmanifest")).json();
+  expect(manifest).toMatchObject({ short_name: "ROOMAX", display: "standalone", start_url: "/" });
+  for (const icon of manifest.icons) expect((await page.request.get(icon.src)).ok()).toBeTruthy();
+
+  await page.goto("/");
+  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+  await page.reload();  // 이제 서비스 워커가 이 화면을 맡는다
+  await expect(page.getByRole("heading", { name: /사장님/ })).toBeVisible();
+
+  // 연결 끊김 흉내: 이 화면 요청을 끊는다 (서비스 워커 요청도 가로챔 — playwright.config 의 실험 옵션)
+  await page.context().route("**/payments", (r) => r.abort("internetdisconnected"));
+  await page.goto("/payments").catch(() => {});  // 화면 이동 실패 → 안내 화면
+  await expect(page.getByRole("heading", { name: "인터넷에 연결되어 있지 않습니다" })).toBeVisible();
+  await page.context().unroute("**/payments");
+  errors.splice(0);  // 일부러 끊은 요청의 'Failed to load resource' 는 오류가 아님
+
+  const cached = await page.evaluate(async () => {
+    const urls: string[] = [];
+    for (const key of await caches.keys()) for (const r of await (await caches.open(key)).keys()) urls.push(new URL(r.url).pathname);
+    return urls;
+  });
+  expect(cached.sort()).toEqual(["/icons/icon-192.png", "/offline.html"]);  // API·화면 HTML 없음
+});
