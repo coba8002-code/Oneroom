@@ -542,6 +542,40 @@ class ExpenseReceipt(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+class RoutineTask(Base):
+    """정기 점검·소모품 일정 (소방·청소·설비 점검·보험 갱신 등). unit_id 가 없으면 건물 공용.
+    주기·다음 예정일은 관리자가 정한 값만 — 법정 주기도 시스템이 정하지 않는다."""
+    __tablename__ = "routine_tasks"
+    __table_args__ = (CheckConstraint("interval_months IS NULL OR interval_months BETWEEN 1 AND 120",
+                                      name="ck_routine_tasks_interval"),)
+    id: Mapped[uuid.UUID] = pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id"), index=True)
+    unit_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units.id"), index=True)
+    fixture_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fixtures.id"), index=True)
+    title: Mapped[str] = mapped_column(String(100))
+    category: Mapped[str] = mapped_column(String(30))  # services/routines.CATEGORIES
+    interval_months: Mapped[int | None] = mapped_column(Integer)  # 없으면 한 번만 (예: 이번 보험 갱신)
+    next_due_on: Mapped[date | None] = mapped_column(Date)  # 모르면 비움
+    vendor: Mapped[str | None] = mapped_column(String(100))
+    note: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active | stopped
+    created_at: Mapped[datetime] = created_at()
+
+
+class RoutineLog(Base):
+    """정기 점검 한 번 한 기록. 지우면 다음 예정일을 이 기록 전 값으로 되돌린다."""
+    __tablename__ = "routine_logs"
+    __table_args__ = (CheckConstraint("cost IS NULL OR cost >= 0", name="ck_routine_logs_cost"),)
+    id: Mapped[uuid.UUID] = pk()
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("routine_tasks.id"), index=True)
+    done_on: Mapped[date] = mapped_column(Date)
+    cost: Mapped[int | None] = mapped_column(BigInteger)  # 기록용 — 결산은 은행 출금 분류로만
+    vendor: Mapped[str | None] = mapped_column(String(100))
+    note: Mapped[str | None] = mapped_column(Text)
+    prev_next_due_on: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime] = created_at()
+
+
 class BankAlert(Base):
     """받은 입금 알림 원문과 처리 결과 (형식 보강·문제 확인용)."""
     __tablename__ = "bank_alerts"
