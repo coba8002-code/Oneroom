@@ -247,7 +247,7 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
         add("info", "backup_old", f"마지막 백업이 {age}일 전입니다.", "/settings")
     if counts["vacant"]:
         vac = ", ".join(u.unit_no for u in units if u.status == "vacant")
-        add("info", "vacant", f"공실 {counts['vacant']}실 ({vac}).", "/onboarding")
+        add("info", "vacant", f"공실 {counts['vacant']}실 ({vac}).", "/vacancy")
 
     return {
         "as_of": as_of,

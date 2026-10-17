@@ -117,6 +117,17 @@ Gmail → Google 계정 → 보안 → **2단계 인증** 켜기 → **앱 비�
 | `ROOMAX_SMTP_USER` / `ROOMAX_SMTP_PASSWORD` | 내 Gmail / 앱 비밀번호(16자리) |
 | `ROOMAX_MAIL_FROM` | `ROOMAX <내 Gmail>` |
 
+**AI 비서 (선택)** — https://console.anthropic.com → 결제 수단 등록·충전 → **API Keys → Create Key** → 아래를 추가하고 Redeploy.
+키는 이 칸에만 넣고 채팅·메일·화면에 붙여 넣지 마세요. 키가 없으면 AI 비서 화면에 '연결 안 됨'만 보이고 다른 기능은 그대로입니다.
+
+| 이름 | 값 |
+|---|---|
+| `ANTHROPIC_API_KEY` | 만든 키 (`sk-ant-…`) |
+| `ROOMAX_AI_MODEL` | 비우면 `claude-opus-5-5`. 비용을 줄이려면 `claude-sonnet-5-5` 나 `claude-haiku-5-5` |
+| `ROOMAX_AI_DAILY_LIMIT` | 사업장당 하루 질문 수 (비우면 50) — 비용 보호 |
+
+콘솔 **Settings → Limits** 에서 월 사용 한도(예: 1만 원 남짓)를 걸어 두면 예상 밖 비용이 생기지 않습니다.
+
 메일 없이 쓰다가 비밀번호를 잊으면: PC 에 Python 을 설치하고 이 저장소의 `backend` 에서
 `ROOMAX_DATABASE_URL=…(5432 주소) ROOMAX_APP_URL=…(화면 주소) python -m app.admin_cli reset-link 내이메일` → 나온 링크를 브라우저에.
 
@@ -142,6 +153,8 @@ Gmail → Google 계정 → 보안 → **2단계 인증** 켜기 → **앱 비�
    - [ ] 설정 → **백업 파일 내려받기** 성공
    - [ ] 다음 날 Supabase Storage → `roomax/backups/` 에 `roomax-…roomaxbak` 이 생김 (정기 백업)
    - [ ] Vercel ② API → **Settings → Cron Jobs** 에 `/api/v1/internal/cron/daily` 가 보임
+   - [ ] (AI 비서를 켰다면) AI 비서 → "이번 달 미납 알려줘" → 답 아래 '근거: 미수 현황'이 보임
+   - [ ] 설정 → 입금 알림 자동 연결 → 연결 주소 만들기 → 휴대폰 연결 (docs/bank-alerts-guide.md)
 
 ## 평소 관리
 

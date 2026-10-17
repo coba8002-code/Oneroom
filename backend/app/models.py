@@ -576,6 +576,36 @@ class RoutineLog(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+class VacancyListing(Base):
+    """공실 모집 조건 (호실당 1개). 광고 문구는 여기 값과 호실·옵션 사실값으로만 만든다 — 시세를 추정하지 않음."""
+    __tablename__ = "vacancy_listings"
+    __table_args__ = (
+        UniqueConstraint("unit_id", name="uq_vacancy_listings_unit"),
+        CheckConstraint("(asking_deposit IS NULL OR asking_deposit >= 0) AND (asking_rent IS NULL OR asking_rent >= 0)",
+                        name="ck_vacancy_listings_amounts"),
+    )
+    id: Mapped[uuid.UUID] = pk()
+    unit_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("units.id"), index=True)
+    asking_deposit: Mapped[int | None] = mapped_column(BigInteger)
+    asking_rent: Mapped[int | None] = mapped_column(BigInteger)
+    available_on: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)  # 광고에 붙일 설명 (관리자 입력)
+    updated_at: Mapped[datetime] = created_at()
+
+
+class VacancyActivity(Base):
+    """공실 기간의 활동 기록 — 중개사 등록·문의·방 보기."""
+    __tablename__ = "vacancy_activities"
+    id: Mapped[uuid.UUID] = pk()
+    unit_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("units.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # agent | inquiry | viewing | other
+    happened_on: Mapped[date] = mapped_column(Date)
+    agent_name: Mapped[str | None] = mapped_column(String(100))  # 중개사무소 이름
+    agent_phone: Mapped[str | None] = mapped_column(EncryptedString())  # 저장 시 암호화
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
 class BankAlert(Base):
     """받은 입금 알림 원문과 처리 결과 (형식 보강·문제 확인용)."""
     __tablename__ = "bank_alerts"

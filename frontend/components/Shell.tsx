@@ -20,6 +20,8 @@ import {
   Wallet,
   X,
   type LucideIcon,
+  DoorClosed,
+  Bot,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -38,9 +40,11 @@ const NAV: NavItem[] = [
   { href: "/payments", label: "임대료 관리", icon: Wallet },
   { href: "/expenses", label: "지출·운영비", icon: Receipt },
   { href: "/notifications", label: "알림·메시지", icon: Bell },
+  { href: "/vacancy", label: "공실 관리", icon: DoorClosed },
   { href: "/assets", label: "자산·수리", icon: Package },
   { href: "/tax", label: "세무 준비", icon: Landmark },
   { href: "/simulate", label: "전월세 시뮬레이션", icon: Calculator },
+  { href: "/assistant", label: "AI 비서", icon: Bot },
   { href: "/settings", label: "설정", icon: Settings },
 ];
 

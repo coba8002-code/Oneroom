@@ -210,3 +210,10 @@ def test_due_today_shows_alert_payment(client, onboarded, org, session):
     after = dash()["due_today"][0]
     assert (after["status"], after["via"], after["paid"]) == ("paid", "alert", 450000)
     assert after["paid_at"].startswith("2026-11-05T05:23")
+
+
+def test_webhook_rate_limit(client, anon_client, onboarded, monkeypatch):
+    monkeypatch.setattr(bank_alerts, "RATE_LIMIT", 3)
+    url = f"/api/v1/bank-alerts/hook/{_token(client, onboarded)}"
+    codes = [anon_client.post(url, json={"text": f"입금 {i + 1},000원 홍길동"}).status_code for i in range(4)]
+    assert codes == [200, 200, 200, 429]  # 주소가 새어도 대량으로 넣지 못함
