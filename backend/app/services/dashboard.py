@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models import Charge, Deposit, Lease, Payment, Property, Tenant, Transaction, TransactionAllocation, Unit
-from app.services import backup, lease_renewal, ledger, receivables, reports, tax_calendar
+from app.services import backup, fixtures, lease_renewal, ledger, receivables, reports, tax_calendar
 from app.services.charges import due_date_for
 from app.services.expenses import kst_date
 from app.services.matching import org_transactions
@@ -188,6 +188,8 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
             when = f"{e['days_left']}일 후 만료" if e["days_left"] >= 0 else f"만료 {-e['days_left']}일 지남"
             dep = f", 보증금 {e['deposit_to_return']:,}원 반환 예정" if e["deposit_to_return"] else ""
             add("info", "lease_ending", f"{unit} 계약 {when}{dep}.", "/expenses")
+    if open_repairs := fixtures.open_repair_count(session, organization_id):
+        add("info", "repair_open", f"진행 중인 수리 {open_repairs}건.", "/assets")
     last_backup = backup.last_backup_at(session, organization_id)
     if last_backup is None:
         add("info", "backup_none", "아직 백업한 적이 없습니다. 설정에서 백업 파일을 내려받아 두세요.", "/settings")

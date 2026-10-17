@@ -34,7 +34,7 @@ MAGIC = b"ROOMAXBK"
 FILE_VERSION = 1
 FORMAT = 1
 # 백업을 만든 DB 스키마. 마이그레이션을 추가하면 같이 올린다 (test_backup 이 alembic head 와 비교)
-SCHEMA_REVISION = "0009"
+SCHEMA_REVISION = "0010"
 MIN_PASSPHRASE = 8
 KST = ZoneInfo("Asia/Seoul")
 MAX_BACKUP_BYTES = 300_000_000
@@ -48,7 +48,8 @@ CHILDREN = (  # (테이블, 외래키 열, 부모 테이블)
     ("lease_documents", "lease_id", "leases"),
     ("deposits", "lease_id", "leases"),
     ("charges", "lease_id", "leases"),
-    ("maintenance_tickets", "unit_id", "units"),
+    ("fixtures", "property_id", "properties"),
+    ("maintenance_tickets", "property_id", "properties"),
     ("transactions", "bank_account_id", "bank_accounts"),
     ("transaction_allocations", "transaction_id", "transactions"),
     ("payments", "charge_id", "charges"),

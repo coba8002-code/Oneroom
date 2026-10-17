@@ -17,6 +17,7 @@ import {
   Sun,
   TrendingUp,
   Wallet,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -428,6 +429,7 @@ const ALERT_ICON: Record<string, { icon: LucideIcon; tone: string }> = {
   lease_notice_soon: { icon: CalendarClock, tone: "bg-indigo-50 text-indigo-600" },
   lease_notice_open: { icon: CalendarClock, tone: "bg-amber-50 text-amber-600" },
   lease_notice_missed: { icon: CalendarClock, tone: "bg-red-50 text-red-500" },
+  repair_open: { icon: Wrench, tone: "bg-orange-50 text-orange-600" },
   vacant: { icon: Info, tone: "bg-slate-100 text-slate-500" },
 };
 

@@ -387,12 +387,53 @@ class NotificationSetting(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
-class MaintenanceTicket(Base):
-    __tablename__ = "maintenance_tickets"
+class Fixture(Base):
+    """자산대장 — 호실 옵션·집기와 건물 공용 설비. unit_id 가 없으면 건물 공용.
+    수명·교체 시기를 시스템이 추정하지 않는다: 교체 예정월(replace_by)은 관리자가 정한 값만."""
+    __tablename__ = "fixtures"
+    __table_args__ = (
+        CheckConstraint("price IS NULL OR price >= 0", name="ck_fixtures_price"),
+        CheckConstraint("owner IN ('landlord', 'tenant')", name="ck_fixtures_owner"),
+    )
     id: Mapped[uuid.UUID] = pk()
-    unit_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("units.id"), index=True)
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id"), index=True)
+    unit_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units.id"), index=True)
+    category: Mapped[str] = mapped_column(String(30))  # services/fixtures.CATEGORIES
+    name: Mapped[str] = mapped_column(String(100))
+    brand: Mapped[str | None] = mapped_column(String(50))
+    model: Mapped[str | None] = mapped_column(String(100))
+    manufactured: Mapped[str | None] = mapped_column(String(7))  # 제조연월 YYYY-MM (명판)
+    installed_on: Mapped[date | None] = mapped_column(Date)  # 설치·구입일
+    price: Mapped[int | None] = mapped_column(BigInteger)  # 구입가 (원)
+    warranty_until: Mapped[date | None] = mapped_column(Date)
+    owner: Mapped[str] = mapped_column(String(20), default="landlord")  # landlord: 임대인 옵션 | tenant: 임차인 소유
+    replace_by: Mapped[str | None] = mapped_column(String(7))  # 교체 예정월 YYYY-MM (관리자가 정함)
+    status: Mapped[str] = mapped_column(String(20), default="in_use")  # in_use | removed
+    removed_on: Mapped[date | None] = mapped_column(Date)
+    removed_reason: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class MaintenanceTicket(Base):
+    """수리 이력. 비용은 기록용 — 결산(NOI)에는 은행 출금을 '수리비'로 분류한 것만 들어간다 (이중 계산 방지)."""
+    __tablename__ = "maintenance_tickets"
+    __table_args__ = (
+        CheckConstraint("cost IS NULL OR cost >= 0", name="ck_maintenance_cost"),
+        CheckConstraint("payer IN ('landlord', 'tenant', 'undecided')", name="ck_maintenance_payer"),
+    )
+    id: Mapped[uuid.UUID] = pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id"), index=True)
+    unit_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units.id"), index=True)  # 없으면 건물 공용
+    fixture_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fixtures.id"), index=True)
+    reported_on: Mapped[date] = mapped_column(Date)
     description: Mapped[str] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(20), default="open")
+    status: Mapped[str] = mapped_column(String(20), default="open")  # open | done
+    completed_on: Mapped[date | None] = mapped_column(Date)
+    vendor: Mapped[str | None] = mapped_column(String(100))
+    cost: Mapped[int | None] = mapped_column(BigInteger)
+    payer: Mapped[str] = mapped_column(String(20), default="undecided")  # 부담: landlord | tenant | undecided
+    note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
 
 
