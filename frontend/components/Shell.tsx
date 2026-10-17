@@ -22,6 +22,7 @@ import {
   type LucideIcon,
   DoorClosed,
   Bot,
+  FileBarChart,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -42,6 +43,7 @@ const NAV: NavItem[] = [
   { href: "/notifications", label: "알림·메시지", icon: Bell },
   { href: "/vacancy", label: "공실 관리", icon: DoorClosed },
   { href: "/assets", label: "자산·수리", icon: Package },
+  { href: "/reports", label: "월간 보고서", icon: FileBarChart },
   { href: "/tax", label: "세무 준비", icon: Landmark },
   { href: "/simulate", label: "전월세 시뮬레이션", icon: Calculator },
   { href: "/assistant", label: "AI 비서", icon: Bot },
@@ -136,7 +138,7 @@ function VerifyBanner({ email }: { email: string }) {
     setMsg(res ? (await res.json().catch(() => ({}))).detail ?? "보내지 못했습니다" : "서버에 연결할 수 없습니다");
   }
   return (
-    <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950" role="status">
+    <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 print:hidden" role="status">
       <MailWarning className="h-5 w-5 shrink-0 text-amber-600" />
       <span className="min-w-0 flex-1">
         이메일 주소 확인이 아직입니다. <b className="break-all">{email}</b> 로 보낸 메일의 링크를 눌러 주세요.
