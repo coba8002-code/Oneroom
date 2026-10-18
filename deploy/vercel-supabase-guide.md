@@ -78,12 +78,31 @@ console.log("ROOMAX_BACKUP_PASSPHRASE=" + hex(16)); console.log("CRON_SECRET=" +
 
 이후에는 마이그레이션이 main 에 들어올 때마다 자동으로 돕니다. (로그에는 버전 이름만 나오고 주소·비밀번호는 나오지 않습니다)
 
+4. **Data API 잠그기 (한 번만)** — Supabase 는 `public` 표를 웹 API(anon 키)로도 열어 둡니다. 이 앱은 그 API 를 쓰지 않으므로 닫습니다.
+   Supabase → **SQL Editor** → 아래를 붙여 넣고 **Run**
+
+   ```sql
+   REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
+   REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
+   ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;
+   ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated;
+   DO $$ DECLARE t text; BEGIN
+     FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+       EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+     END LOOP;
+   END $$;
+   ```
+
+   앱은 표 소유자(`postgres`)로 접속하므로 영향이 없습니다. 끝나면 **Advisors → Security** 에 'RLS disabled' 경고가 없어야 합니다.
+
 ## 4단계. Vercel ② API (10분)
 
 1. https://vercel.com → **Sign Up → Hobby** → GitHub 로 계속
 2. **Add New… → Project** → `Oneroom` 저장소 **Import**
 3. 설정
-   - Project Name: `roomax-api` (원하는 이름. 주소가 `https://roomax-api.vercel.app` 처럼 됩니다)
+   - Project Name: `roomax-api-내이름` 처럼 **겹치지 않는 이름** (주소가 `https://그이름.vercel.app` 이 됩니다)
+     - `roomax-api` 처럼 남이 이미 쓰는 이름이면 Vercel 이 뒤에 글자를 붙인 다른 주소를 줍니다. 배포 뒤 프로젝트의 **Domains** 에 적힌 주소가 진짜 내 주소입니다
+     - `○○○.vercel.app/api/v1/health` 가 `ok` 여도 남의 앱일 수 있습니다 — 반드시 Domains 의 주소로 확인
    - **Root Directory: `backend`** (Edit 눌러 선택)
    - Framework Preset: **Other**
 4. **Environment Variables** 에 아래를 하나씩 (값은 따옴표 없이)
