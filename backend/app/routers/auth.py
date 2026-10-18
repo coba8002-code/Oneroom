@@ -101,6 +101,9 @@ def _me(session: Session, user: User) -> dict:
                  "email_verified": user.email_verified_at is not None,
                  "marketing_agreed": user.marketing_agreed_at is not None},
         "organization": {"id": str(org.id), "name": org.name},
+        # 화면 로고 옆에 보이는 건물 이름 (등록 순)
+        "buildings": list(session.scalars(select(Property.name).where(Property.organization_id == org.id)
+                                          .order_by(Property.created_at))),
         # 운영 서버인데 메일이 file 모드(개인 사용)면 확인 메일이 실제로 가지 않는다 → 화면은 확인 안내를 띄우지 않음
         "mail_enabled": not (settings.env == "production" and settings.mail_mode == "file"),
     }

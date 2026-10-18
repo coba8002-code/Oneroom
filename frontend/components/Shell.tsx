@@ -63,15 +63,19 @@ function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-function Logo({ compact = false }: { compact?: boolean }) {
+/** 로고 옆에 보일 건물 이름: 한 동이면 그 이름, 여러 동이면 '첫 건물 외 N동', 아직 없으면 null */
+function buildingLabel(me: Me | null): string | null {
+  const b = me?.buildings ?? [];
+  return b.length === 0 ? null : b.length === 1 ? b[0] : `${b[0]} 외 ${b.length - 1}동`;
+}
+
+function Logo({ compact = false, building }: { compact?: boolean; building: string | null }) {
   return (
-    <a href="/" className="flex items-center gap-2.5">
-      <span className={`grid place-items-center rounded-xl bg-white/10 ${compact ? "h-8 w-8" : "h-11 w-11"}`}>
-        <House className={compact ? "h-5 w-5" : "h-7 w-7"} strokeWidth={2.2} />
-      </span>
-      <span className="leading-tight">
+    <a href="/" className="flex min-w-0 items-center gap-2.5">
+      <img src="/icons/icon-192.png" alt="" className={`shrink-0 rounded-xl ring-1 ring-white/15 ${compact ? "h-8 w-8" : "h-11 w-11"}`} />
+      <span className="min-w-0 leading-tight">
         <span className={`block font-extrabold tracking-tight ${compact ? "text-lg" : "text-2xl"}`}>ROOMAX</span>
-        {!compact && <span className="block text-xs text-slate-300">내 건물의 든든한 파트너</span>}
+        <span className="block truncate text-xs text-slate-300" title={building ?? undefined}>{building ?? "내 건물의 든든한 파트너"}</span>
       </span>
     </a>
   );
@@ -191,15 +195,16 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen lg:flex">
       {/* 데스크톱 사이드바 */}
       <aside className="sticky top-0 hidden h-screen print:!hidden w-64 shrink-0 flex-col gap-6 bg-gradient-to-b from-navy-800 to-navy-950 px-4 py-6 text-white lg:flex">
-        <div className="px-2"><Logo /></div>
+        <div className="px-2"><Logo building={buildingLabel(me)} /></div>
         <NavList pathname={pathname} />
         <div className="mt-auto space-y-3"><SidebarCard /><UserBox me={me} /></div>
       </aside>
 
       {/* 모바일 상단 바 */}
       <header className="sticky top-0 z-30 flex items-center justify-between print:hidden border-b border-slate-200 bg-white/95 px-4 py-2.5 backdrop-blur lg:hidden">
-        <a href="/" className="flex items-center gap-2 font-extrabold tracking-tight text-navy-800">
-          <House className="h-6 w-6 text-blue-600" strokeWidth={2.4} /> ROOMAX
+        <a href="/" className="flex min-w-0 items-center gap-2 font-extrabold tracking-tight text-navy-800">
+          <img src="/icons/icon-192.png" alt="" className="h-7 w-7 shrink-0 rounded-lg" /> ROOMAX
+          {buildingLabel(me) && <span className="truncate text-sm font-semibold text-slate-500">· {buildingLabel(me)}</span>}
         </a>
         <button type="button" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100" aria-label="메뉴 열기"
           onClick={() => setDrawer(true)}>
@@ -213,7 +218,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           <button type="button" className="absolute inset-0 bg-slate-900/40" aria-label="메뉴 닫기" onClick={() => setDrawer(false)} />
           <div className="absolute inset-y-0 left-0 flex w-72 flex-col gap-6 bg-gradient-to-b from-navy-800 to-navy-950 px-4 py-5 text-white">
             <div className="flex items-center justify-between px-2">
-              <Logo compact />
+              <Logo compact building={buildingLabel(me)} />
               <button type="button" className="rounded-lg p-2 hover:bg-white/10" aria-label="메뉴 닫기" onClick={() => setDrawer(false)}>
                 <X className="h-5 w-5" />
               </button>
