@@ -125,3 +125,20 @@ def test_supabase_style_database_url_is_accepted():
     assert _db_url("postgres://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
     assert _db_url("postgresql+psycopg://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
     assert _db_url("sqlite://") == "sqlite://"
+
+
+def test_vercel_supabase_connect_env_names(monkeypatch):
+    """Vercel Storage → Connect Project 가 넣는 이름만 있어도 동작. ROOMAX_* 가 있으면 그것이 먼저."""
+    from app.config import _db_url, _env
+
+    monkeypatch.delenv("ROOMAX_DATABASE_URL", raising=False)
+    monkeypatch.setenv("POSTGRES_URL", "postgres://postgres.ref:pw@aws-0-ap-northeast-2.pooler.supabase.com:6543"
+                                       "/postgres?sslmode=require&supa=base-pooler.x")
+    assert _db_url(_env("ROOMAX_DATABASE_URL", "POSTGRES_URL")) == (
+        "postgresql+psycopg://postgres.ref:pw@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres?sslmode=require")
+    monkeypatch.setenv("ROOMAX_DATABASE_URL", "postgresql://u:p@h/db")
+    assert _env("ROOMAX_DATABASE_URL", "POSTGRES_URL") == "postgresql://u:p@h/db"
+    monkeypatch.setenv("ROOMAX_DATABASE_URL", "  ")  # 비어 있는 값은 없는 것으로
+    assert _env("ROOMAX_DATABASE_URL", "POSTGRES_URL").startswith("postgres://postgres.ref")
+    assert _env("ROOMAX_NOPE_1", "ROOMAX_NOPE_2", default="d") == "d"
+    assert _db_url("postgresql://u:p@h/db?supa=x") == "postgresql+psycopg://u:p@h/db"

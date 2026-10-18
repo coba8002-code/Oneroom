@@ -124,6 +124,11 @@ console.log("ROOMAX_BACKUP_PASSPHRASE=" + hex(16)); console.log("CRON_SECRET=" +
 | `ROOMAX_APP_URL` | 일단 `https://roomax.vercel.app` — 5단계 뒤 실제 화면 주소로 고침 |
 | 메일 (권장, 아래 표) | |
 
+**더 쉬운 길 — Vercel 에서 Supabase 를 만들었다면** (Vercel → Storage 의 Supabase): 그 프로젝트의 **Storage** 탭 →
+Supabase 데이터베이스 → **Connect Project** → 이 백엔드 프로젝트 선택(Environment 는 Production 포함, 이름 앞글자 Prefix 는 비움).
+Vercel 이 `POSTGRES_URL`·`SUPABASE_URL`·`SUPABASE_SERVICE_ROLE_KEY` 를 넣어 주고 앱이 그것을 읽으므로
+`ROOMAX_DATABASE_URL`·`ROOMAX_SUPABASE_URL`·`ROOMAX_SUPABASE_SERVICE_KEY` 는 **안 넣어도 됩니다** (넣으면 그쪽이 먼저).
+
 5. **Deploy** → 끝나면 `https://roomax-api.vercel.app/api/v1/health` 를 열어 `{"status":"ok"…}` 확인
 
 **메일 (권장)** — Vercel 에서는 서버 명령(`admin_cli reset-link`)을 쓸 수 없어서, 비밀번호를 잊으면 메일로 재설정합니다.
