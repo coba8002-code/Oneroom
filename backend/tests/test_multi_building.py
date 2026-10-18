@@ -36,3 +36,7 @@ def test_duplicate_building_name_and_foreign_account_rejected(client, make_clien
     _, other = make_client(email="other@example.com", org_name="남의 사업장")
     res = _onboard(client, "새 건물", bank_account_id=other["organization"]["id"])  # 남의 것·없는 계좌
     assert res.status_code == 409 and "계좌" in res.json()["detail"]
+
+
+def test_me_lists_building_names_for_logo(client, onboarded):
+    assert client.get("/api/v1/auth/me").json()["buildings"] == ["테스트 다가구"]

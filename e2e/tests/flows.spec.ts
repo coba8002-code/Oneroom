@@ -111,6 +111,8 @@ test("건물 두 동: 같은 통장을 함께 쓰고, 호실은 '건물 이름 +
   await page.getByText("등록 완료").waitFor();
   expect((await api(page, "GET", `/api/v1/bank-accounts?organization_id=${org}`)).length).toBe(1);
 
+  await page.goto("/");
+  await expect(page.locator("aside").getByText("행복빌라 외 1동")).toBeVisible();  // 로고 옆 건물 이름
   const labels = (await api(page, "GET", `/api/v1/units?organization_id=${org}`)).map((u: { unit_no: string }) => u.unit_no);
   expect(labels).toContain("행복빌라 101");
   expect(labels).toContain("행복빌라 2동 101");

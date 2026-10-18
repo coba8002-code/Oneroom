@@ -348,6 +348,7 @@ export interface Me {
   user: { id: string; email: string; name: string | null; role: "owner" | "manager" | "viewer"; mfa_enabled: boolean;
     email_verified: boolean; marketing_agreed: boolean };
   organization: { id: string; name: string };
+  buildings?: string[];  // 등록한 건물 이름 (로고 옆 표시)
   mail_enabled?: boolean;  // false = 개인 사용 서버라 메일을 보내지 않음 → 확인 안내 숨김
 }
 
