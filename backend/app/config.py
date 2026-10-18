@@ -1,12 +1,28 @@
 import os
 from dataclasses import dataclass
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+
+def _env(*names: str, default: str = "") -> str:
+    """앞의 이름부터 차례로 보고 처음 값이 있는 것. ROOMAX_* 를 먼저 보고, 없으면 Vercel 의 Supabase 연결
+    (Storage → Connect Project)이 넣어 주는 이름을 쓴다 — 비밀값을 손으로 옮겨 적지 않아도 되게."""
+    for name in names:
+        if value := os.getenv(name, "").strip():
+            return value
+    return default
 
 
 def _db_url(url: str) -> str:
-    """Supabase 등이 주는 postgresql:// · postgres:// 주소를 이 앱의 드라이버(psycopg 3) 주소로 바꾼다."""
+    """Supabase 등이 주는 postgresql:// · postgres:// 주소를 이 앱의 드라이버(psycopg 3) 주소로 바꾼다.
+    Vercel 연결이 붙이는 `supa=` 같은 libpq 가 모르는 옵션은 접속을 막으므로 뺀다."""
     for scheme in ("postgresql://", "postgres://"):
         if url.startswith(scheme):
-            return "postgresql+psycopg://" + url[len(scheme):]
+            url = "postgresql+psycopg://" + url[len(scheme):]
+            break
+    parts = urlsplit(url)
+    if parts.query:
+        query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "supa"]
+        url = urlunsplit(parts._replace(query=urlencode(query)))
     return url
 
 
@@ -14,8 +30,9 @@ def _db_url(url: str) -> str:
 class Settings:
     # production 이면 시작할 때 위험한 설정을 검사하고, 문제가 있으면 서버를 띄우지 않는다
     env: str = os.getenv("ROOMAX_ENV", "development")
-    database_url: str = _db_url(os.getenv(
-        "ROOMAX_DATABASE_URL", "postgresql+psycopg://roomax:roomax@localhost:5432/roomax"
+    # Vercel 의 Supabase 연결은 POSTGRES_URL(풀러 6543, 서버리스용)을 넣어 준다
+    database_url: str = _db_url(_env(
+        "ROOMAX_DATABASE_URL", "POSTGRES_URL", default="postgresql+psycopg://roomax:roomax@localhost:5432/roomax"
     ))
     # Fernet 키: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     field_key: str = os.getenv("ROOMAX_FIELD_KEY", "")
@@ -23,8 +40,8 @@ class Settings:
     upload_dir: str = os.getenv("ROOMAX_UPLOAD_DIR", "uploads")
     # 파일 보관소: local(디스크) | supabase(Storage — Vercel 등 서버리스). app/services/blobs.py
     storage: str = os.getenv("ROOMAX_STORAGE", "local")
-    supabase_url: str = os.getenv("ROOMAX_SUPABASE_URL", "")
-    supabase_service_key: str = os.getenv("ROOMAX_SUPABASE_SERVICE_KEY", "")
+    supabase_url: str = _env("ROOMAX_SUPABASE_URL", "SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL").rstrip("/")
+    supabase_service_key: str = _env("ROOMAX_SUPABASE_SERVICE_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SECRET_KEY")
     supabase_bucket: str = os.getenv("ROOMAX_SUPABASE_BUCKET", "roomax")
     # 서버리스(Vercel 은 VERCEL=1 을 넣어 줌): DB 연결을 매 요청 새로(NullPool), 풀러 호환(prepared statement 끔)
     serverless: bool = os.getenv("ROOMAX_SERVERLESS", os.getenv("VERCEL", "")) in ("1", "true")
@@ -86,7 +103,8 @@ def production_problems(s: Settings) -> list[str]:
     if s.serverless and s.storage != "supabase":
         problems.append("서버리스(Vercel)에서는 서버 디스크에 파일을 둘 수 없습니다 — ROOMAX_STORAGE=supabase 로 설정하세요")
     if s.storage == "supabase" and not (s.supabase_url and s.supabase_service_key):
-        problems.append("ROOMAX_STORAGE=supabase 인데 ROOMAX_SUPABASE_URL·ROOMAX_SUPABASE_SERVICE_KEY 가 없습니다")
+        problems.append("ROOMAX_STORAGE=supabase 인데 Supabase 주소·service 키가 없습니다 "
+                        "(ROOMAX_SUPABASE_URL·ROOMAX_SUPABASE_SERVICE_KEY, 또는 Vercel Storage 에서 Connect Project)")
     if ":roomax@" in s.database_url:
         problems.append("ROOMAX_DATABASE_URL 에 개발용 비밀번호(roomax)가 들어 있습니다")
     return problems
