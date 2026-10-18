@@ -23,6 +23,7 @@ CSV_COLUMNS = {
     "연락처": "tenant_phone",
     "보증금": "deposit",
     "월세": "rent",
+    "관리비": "mgmt_fee",  # 선택 열 — 비우면 '따로 적지 않음'
     "납부일": "due_day",
     "계약시작": "start_date",
     "계약종료": "end_date",
@@ -78,7 +79,7 @@ def onboard(session: Session, organization_id: uuid.UUID, data: OnboardingIn) ->
         session.flush()
         lease = Lease(
             unit_id=unit.id, tenant_id=tenant.id, start_date=u.start_date, end_date=u.end_date,
-            deposit=u.deposit or 0, rent=u.rent, due_day=u.due_day, status="active",
+            deposit=u.deposit or 0, rent=u.rent, mgmt_fee=u.mgmt_fee, due_day=u.due_day, status="active",
         )
         session.add(lease)
         session.flush()
@@ -138,7 +139,7 @@ def parse_onboarding_csv(raw: bytes) -> tuple[list[UnitIn], list[RowError]]:
                 value = row.get(label, "")
                 if not value:
                     continue
-                if key in ("floor", "deposit", "rent", "due_day"):
+                if key in ("floor", "deposit", "rent", "mgmt_fee", "due_day"):
                     fields[key] = _int(value)
                 elif key == "area_m2":
                     fields[key] = float(value)

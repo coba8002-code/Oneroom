@@ -3,6 +3,7 @@
 자동 확정은 아래가 **모두** 맞을 때만:
   1) 입금자명(이름 또는 학습된 별칭)이 활성 계약 1건에만 일치
   2) 금액 = 그 계약의 가장 오래된 미납 청구 잔액
+     (가장 오래된 청구가 월세·관리비면 같은 납부일의 월세+관리비 잔액 합계 — 한 번에 보내는 한 달 치)
 그 밖에는 제안(pending)만 만들고 관리자가 확정한다. 모든 배분은 근거·신뢰도를 남긴다.
 """
 from __future__ import annotations
@@ -29,6 +30,7 @@ from app.models import (
     Unit,
 )
 from app.services import ledger
+from app.services.charges import MONTHLY
 
 KST = ZoneInfo("Asia/Seoul")
 AUTO_CONFIDENCE = 0.95
@@ -90,7 +92,14 @@ def suggest(session: Session, txn: Transaction, leases: list[LeaseInfo],
 
     def next_due(li: LeaseInfo) -> tuple[str, int] | None:
         oc = ledger.open_charges(session, li.lease.id)
-        return (oc[0][0].period, oc[0][1]) if oc else None
+        if not oc:
+            return None
+        first = oc[0][0]
+        if first.kind not in MONTHLY:
+            return first.period, oc[0][1]
+        same = [(c, r) for c, r in oc if c.kind in MONTHLY and c.period == first.period and c.due_date == first.due_date]
+        label = first.period + (" 월세·관리비" if len(same) > 1 else "")
+        return label, sum(r for _, r in same)
 
     name_hits = {li.lease.id for li in leases if payer and normalize_name(li.tenant_name) == payer}
     if payer in aliases and aliases[payer] in by_id:

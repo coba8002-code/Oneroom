@@ -179,9 +179,10 @@ function DashboardBody({ d, busy, onGenerate }: { d: Dashboard; busy: boolean; o
   return (
     <>
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-5 lg:gap-4">
-        <Kpi icon={CalendarDays} tone="blue" label="이번 달 임대수입" value={won(d.money.rent_charged)}
-          sub={d.money.charges_ready ? `임대 ${d.counts.occupied}호실 청구 기준` : "이번 달 청구 전"} />
-        <Kpi icon={Wallet} tone="green" label="입금 완료" value={won(d.money.rent_received)}
+        <Kpi icon={CalendarDays} tone="blue" label="이번 달 임대수입" value={won(d.money.income_charged)}
+          sub={d.money.charges_ready ? `임대 ${d.counts.occupied}호실 청구 기준${d.money.mgmt_charged ? ` · 관리비 ${won(d.money.mgmt_charged)} 포함` : ""}`
+            : "이번 달 청구 전"} />
+        <Kpi icon={Wallet} tone="green" label="입금 완료" value={won(d.money.income_received)}
           sub={d.money.bank_covered ? `${paidCount}/${occupied.length} 호실 완납` : "이번 달 은행 내역 없음"} href="/payments" />
         <Kpi icon={AlertCircle} tone={unsure ? "orange" : "red"} label={unsure ? "미납 금액 (확인 전)" : "미납 금액"}
           value={won(d.money.overdue_total)} sub={`${d.money.overdue_count}건 · 납부일 지남`} href="/payments" />
@@ -323,7 +324,7 @@ function UnitsCard({ d }: { d: Dashboard }) {
                 <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-slate-600" />
               </div>
               <div className="mt-0.5 text-[13px] text-slate-700">
-                {u.status === "occupied" ? manwon(u.rent) : u.floor != null ? `${u.floor}층` : "—"}
+                {u.status === "occupied" ? manwon(u.rent) + (u.mgmt_fee ? ` +관리 ${manwon(u.mgmt_fee)}` : "") : u.floor != null ? `${u.floor}층` : "—"}
               </div>
               <div className={`mt-2 flex items-center gap-1.5 text-[13px] font-semibold ${st.text}`}>
                 <span className={`h-2.5 w-2.5 rounded-full ${st.dot}`} />{st.label}
@@ -344,7 +345,7 @@ function UnitsCard({ d }: { d: Dashboard }) {
               <a href="/payments" className="flex items-center gap-3 py-2.5">
                 <span className={`h-2.5 w-2.5 rounded-full ${st.dot}`} />
                 <span className="w-14 font-bold">{u.unit_no}호</span>
-                <span className="flex-1 text-sm text-slate-600">{u.status === "occupied" ? manwon(u.rent) : ""}</span>
+                <span className="flex-1 text-sm text-slate-600">{u.status === "occupied" ? manwon(u.rent) + (u.mgmt_fee ? ` +관리 ${manwon(u.mgmt_fee)}` : "") : ""}</span>
                 <span className={`chip ${st.card} ${st.text} border`}>{st.label}</span>
                 <ChevronRight className="h-4 w-4 text-slate-400" />
               </a>
@@ -358,7 +359,7 @@ function UnitsCard({ d }: { d: Dashboard }) {
 
 // 검증한 범주 팔레트 (dataviz validate_palette: light 모드 전 항목 PASS)
 const BARS = [
-  { key: "rent_received", label: "임대수입", color: "#2563eb" },
+  { key: "income_received", label: "임대수입", color: "#2563eb" },
   { key: "operating_total", label: "운영비", color: "#16a34a" },
   { key: "non_operating_total", label: "기타지출", color: "#8b5cf6" },
 ] as const;

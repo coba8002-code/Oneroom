@@ -60,9 +60,9 @@ TOOLS = [
           "확인이 필요한 항목, 오늘 납부일, 7일 안 납부 예정.", {"as_of": _date_prop("기준일")}),
     _tool("list_unpaid", "납부일이 지난 미수(호실·청구 월·납부일·청구액·입금액·남은 금액·지난 일수), 선납 잔액, 입금 검토 대기 건수.",
           {"as_of": _date_prop("기준일")}),
-    _tool("get_month_report", "한 달 결산: 청구액, 확인된 월세 입금, 운영비 항목별, 순운영수익, 생활비·주인세대(제외 항목), 확정 여부.",
+    _tool("get_month_report", "한 달 결산: 월세 청구액, 확인된 월세 입금, 관리비·공과금 청구와 입금(따로 청구했을 때만), 운영비 항목별, 순운영수익, 생활비·주인세대(제외 항목), 확정 여부.",
           {"period": {"type": "string", "description": "청구 월 YYYY-MM"}}),
-    _tool("list_leases", "진행 중인 계약: 호실, 보증금, 월세, 납부일, 시작·만료일."),
+    _tool("list_leases", "진행 중인 계약: 호실, 보증금, 월세, 정액 관리비(null 이면 따로 적지 않음 — 월세에 섞여 있을 수 있음), 납부일, 시작·만료일."),
     _tool("list_lease_endings", "만료가 다가오는 계약과 갱신 통지 기간(만료 6~2개월 전), 통지 기록, 돌려줄 보증금.",
           {"as_of": _date_prop("기준일")}),
     _tool("list_vacancies", "공실: 호실, 공실 시작일, 공실 일수, 직전 월세, 직전 월세 기준 손실액.", {"as_of": _date_prop("기준일")}),
@@ -131,7 +131,7 @@ def _leases(session: Session, org: uuid.UUID, a: dict, today: date) -> list[dict
                            .join(Property, Unit.property_id == Property.id)
                            .where(Property.organization_id == org, Lease.status == "active")
                            .order_by(Unit.label)).all()
-    return [{"unit_no": u, "deposit": le.deposit, "rent": le.rent, "due_day": le.due_day,
+    return [{"unit_no": u, "deposit": le.deposit, "rent": le.rent, "mgmt_fee": le.mgmt_fee, "due_day": le.due_day,
              "start_date": le.start_date, "end_date": le.end_date} for le, u in rows]
 
 

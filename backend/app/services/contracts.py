@@ -23,7 +23,8 @@ class UploadError(MatchError):
 
 MAX_BYTES = 10_000_000
 MAGIC = {b"\xff\xd8\xff": ("jpg", "image/jpeg"), b"\x89PNG": ("png", "image/png"), b"%PDF": ("pdf", "application/pdf")}
-FIELDS = ("deposit", "rent", "due_day", "start_date", "end_date")
+FIELDS = ("deposit", "rent", "mgmt_fee", "due_day", "start_date", "end_date")
+KEEP = object()  # 검수 화면이 관리비를 보내지 않으면 기존 값을 그대로 둔다
 
 
 def detect(raw: bytes) -> tuple[str, str]:
@@ -107,7 +108,7 @@ def retry_ocr(session: Session, organization_id: uuid.UUID, doc_id: uuid.UUID, p
 
 
 def lease_values(lease: Lease) -> dict:
-    return {"deposit": lease.deposit, "rent": lease.rent, "due_day": lease.due_day,
+    return {"deposit": lease.deposit, "rent": lease.rent, "mgmt_fee": lease.mgmt_fee, "due_day": lease.due_day,
             "start_date": lease.start_date.isoformat(), "end_date": lease.end_date.isoformat() if lease.end_date else None}
 
 
@@ -132,7 +133,7 @@ def _set_deposit(session: Session, lease: Lease, deposit: int) -> None:
 
 
 def verify(session: Session, organization_id: uuid.UUID, doc_id: uuid.UUID, *, deposit: int, rent: int,
-           due_day: int, start_date: date, end_date: date | None) -> LeaseDocument:
+           due_day: int, start_date: date, end_date: date | None, mgmt_fee=KEEP) -> LeaseDocument:
     """관리자가 확정한 값을 원장에 반영한다. 이미 생성된 청구는 바꾸지 않는다 (다음 청구부터)."""
     doc = doc_in_org(session, organization_id, doc_id)
     if doc is None:
@@ -148,6 +149,8 @@ def verify(session: Session, organization_id: uuid.UUID, doc_id: uuid.UUID, *, d
         _set_deposit(session, lease, deposit)
     lease.deposit, lease.rent, lease.due_day = deposit, rent, due_day
     lease.start_date, lease.end_date = start_date, end_date
+    if mgmt_fee is not KEEP:
+        lease.mgmt_fee = mgmt_fee
 
     after = lease_values(lease)
     changed = [k for k in FIELDS if before[k] != after[k]]

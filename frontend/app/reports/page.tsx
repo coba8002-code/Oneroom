@@ -10,6 +10,7 @@ interface Report {
     unconfirmed_out: number; pending_review_in: number; complete: boolean };
   occupancy: { rental_units: number; leased_in_month: number };
   money: { rent_charged: number | null; rent_received: number | null; operating: Record<string, number | null>;
+    mgmt_charged: number | null; mgmt_received: number | null; utility_charged: number | null; utility_received: number | null;
     operating_total: number | null; noi: number | null; excluded: Record<string, number | null>;
     deposit_in: number | null; deposit_out: number | null };
   charges: { unit_no: string; due_date: string; amount: number; paid: number; status: string; kind?: string }[];
@@ -106,6 +107,8 @@ function ReportBody({ r }: { r: Report }) {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 print:grid-cols-3">
         {([["월세 청구", r.money.rent_charged], ["월세 입금(확정)", r.money.rent_received], ["미수(납부일 지남)", r.overdue.total],
+          ...(r.money.mgmt_charged != null ? [["관리비 청구", r.money.mgmt_charged], ["관리비 입금(확정)", r.money.mgmt_received]] : []),
+          ...(r.money.utility_charged != null ? [["공과금 청구", r.money.utility_charged], ["공과금 입금(확정)", r.money.utility_received]] : []),
           ["운영비", r.money.operating_total], ["순운영수익", r.money.noi], ["보증금 잔액(부채)", r.deposits_liability]] as [string, number | null][]).map(([k, v]) => (
           <div key={k} className="card p-3 print:border print:shadow-none">
             <p className="text-xs text-slate-500">{k}</p><p className="text-lg font-bold"><Money v={v} /></p>

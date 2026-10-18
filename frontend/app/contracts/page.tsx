@@ -22,7 +22,8 @@ import { shrinkImage } from "@/lib/image";
 
 const FIELD_META: { key: ContractField; label: string; kind: "money" | "day" | "date" }[] = [
   { key: "deposit", label: "보증금", kind: "money" },
-  { key: "rent", label: "월세 (관리비 포함)", kind: "money" },
+  { key: "rent", label: "월세", kind: "money" },
+  { key: "mgmt_fee", label: "정액 관리비 (없으면 0, 모르면 비움)", kind: "money" },
   { key: "due_day", label: "납부일 (매월)", kind: "day" },
   { key: "start_date", label: "계약 시작", kind: "date" },
   { key: "end_date", label: "계약 종료", kind: "date" },
@@ -96,6 +97,7 @@ export default function ContractsPage() {
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
                 <dt className="text-slate-500">월세</dt><dd className="text-right font-medium tabular-nums">{won(c.rent)}</dd>
+                <dt className="text-slate-500">관리비</dt><dd className="text-right tabular-nums">{c.mgmt_fee == null ? "—" : won(c.mgmt_fee)}</dd>
                 <dt className="text-slate-500">보증금</dt><dd className="text-right tabular-nums">{won(c.deposit)}</dd>
                 <dt className="text-slate-500">납부일</dt><dd className="text-right">매월 {c.due_day}일</dd>
                 <dt className="text-slate-500">기간</dt><dd className="text-right text-xs tabular-nums">{c.start_date} ~ {c.end_date ?? "—"}</dd>
@@ -311,6 +313,7 @@ function Review({ orgId, doc, onDoc, onDone }: {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({
           deposit: num(values.deposit), rent: num(values.rent), due_day: num(values.due_day),
+          mgmt_fee: values.mgmt_fee.trim() === "" ? null : num(values.mgmt_fee),
           start_date: values.start_date, end_date: values.end_date || null,
         }),
       }));

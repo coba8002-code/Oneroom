@@ -1,6 +1,6 @@
 "use client";
 
-import { Calculator, ClipboardList, DoorOpen, FileCheck2, Link2, LogOut, Plus, Undo2 } from "lucide-react";
+import { Calculator, ClipboardList, DoorOpen, FileCheck2, Link2, LogOut, Plus, Receipt, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, todayKst, won } from "@/lib/api";
@@ -9,7 +9,7 @@ import TenantLink from "./TenantLink";
 
 interface LeaseH {
   lease_id: string; tenant_name: string; status: "active" | "ended" | "draft"; start_date: string; end_date: string | null;
-  signed_on: string | null; ended_on: string | null; end_reason: string | null; deposit: number; rent: number; deposit_unreturned: number;
+  signed_on: string | null; ended_on: string | null; end_reason: string | null; deposit: number; rent: number; mgmt_fee: number | null; deposit_unreturned: number;
 }
 interface UnitH { unit_id: string; unit_no: string; use_type: "rental" | "owner"; status: string; leases: LeaseH[] }
 const json = (method: string, body?: unknown) => ({ method,
@@ -27,6 +27,7 @@ export default function UnitsPage() {
   const [letting, setLetting] = useState<string | null>(null);
   const [checking, setChecking] = useState<string | null>(null);
   const [linking, setLinking] = useState<string | null>(null);
+  const [amounts, setAmounts] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try { setUnits(await api<UnitH[]>("/api/v1/lease-history")); }
@@ -85,6 +86,7 @@ export default function UnitsPage() {
                             <FileCheck2 className="h-3.5 w-3.5" />납부 확인서</Link>}
                         </div>
                         <p className="mt-0.5 text-xs text-slate-600">{l.start_date} ~ {l.end_date ?? "—"} · 보증금 {won(l.deposit)} · 월세 {won(l.rent)}
+                          {" · "}{l.mgmt_fee == null ? "관리비 따로 안 적음" : l.mgmt_fee === 0 ? "관리비 없음" : `관리비 ${won(l.mgmt_fee)}`}
                           {l.end_reason ? ` · ${l.end_reason}` : ""}</p>
                         {canWrite && l.status === "active" && (ending === l.lease_id ? (
                           <EndForm busy={busy} onCancel={() => setEnding(null)} onSave={(body) => run(
@@ -101,11 +103,18 @@ export default function UnitsPage() {
                             <button type="button" className="btn-secondary btn-sm" aria-expanded={linking === l.lease_id}
                               onClick={() => setLinking(linking === l.lease_id ? null : l.lease_id)}>
                               <Link2 className="h-3.5 w-3.5" />임차인 링크</button>
+                            <button type="button" className="btn-secondary btn-sm" aria-expanded={amounts === l.lease_id}
+                              onClick={() => setAmounts(amounts === l.lease_id ? null : l.lease_id)}>
+                              <Receipt className="h-3.5 w-3.5" />월세·관리비</button>
                             <button type="button" className="btn-secondary btn-sm" onClick={() => { setEnding(l.lease_id); setLetting(null); }}>
                               <LogOut className="h-3.5 w-3.5" />계약 종료</button>
                           </div>
                         ))}
                         {checking === l.lease_id && l.status === "active" && <Checklist leaseId={l.lease_id} canWrite={canWrite} />}
+                        {amounts === l.lease_id && l.status === "active" && <AmountsForm lease={l} busy={busy} onCancel={() => setAmounts(null)}
+                          onSave={(body) => run(() => api(`/api/v1/leases/${l.lease_id}/amounts`, json("PUT", body)),
+                            () => ({ text: `${u.unit_no}호 월세·관리비를 고쳤습니다. 다음에 만드는 청구부터 적용됩니다.` }))
+                            .then((ok) => ok && setAmounts(null))} />}
                         {linking === l.lease_id && l.status === "active" && <TenantLink leaseId={l.lease_id} unitNo={u.unit_no} canWrite={canWrite} />}
                         {canWrite && lastEnded?.lease_id === l.lease_id && (
                           <button type="button" className="btn-secondary btn-sm mt-1.5" disabled={busy}
@@ -145,9 +154,38 @@ function EndForm({ busy, onSave, onCancel }: { busy: boolean; onSave: (b: { ende
   );
 }
 
+function AmountsForm({ lease, busy, onSave, onCancel }: { lease: LeaseH; busy: boolean;
+  onSave: (b: { rent: number; mgmt_fee: number | null }) => void; onCancel: () => void }) {
+  const [rent, setRent] = useState(String(lease.rent));
+  const [mgmt, setMgmt] = useState(lease.mgmt_fee == null ? "" : String(lease.mgmt_fee));
+  const digits = (f: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => f(e.target.value.replace(/\D/g, ""));
+  const total = lease.rent + (lease.mgmt_fee ?? 0);
+  const canSplit = mgmt !== "" && Number(mgmt) > 0 && Number(mgmt) < total;
+  return (
+    <div className="mt-2 space-y-2 rounded-xl bg-slate-50 p-3 text-sm">
+      <p className="text-xs text-slate-600">관리비를 따로 적으면 매달 월세와 같은 납부일에 관리비 청구가 따로 생기고, 월세 납부 확인서에는 월세만 들어갑니다.
+        관리비를 비우면 &lsquo;따로 안 적음&rsquo;(월세에 섞여 있을 수 있음), 0은 &lsquo;관리비 없음&rsquo;입니다. 이미 만든 청구는 바뀌지 않습니다.</p>
+      <div className="flex flex-wrap gap-2">
+        <label className="text-xs text-slate-600">월세 (원)<input className="field mt-1 block w-32" inputMode="numeric" value={rent} onChange={digits(setRent)} /></label>
+        <label className="text-xs text-slate-600">정액 관리비 (원)<input className="field mt-1 block w-32" inputMode="numeric" value={mgmt}
+          placeholder="비우면 모름" onChange={digits(setMgmt)} /></label>
+      </div>
+      {canSplit && (
+        <button type="button" className="btn-secondary btn-sm" onClick={() => setRent(String(total - Number(mgmt)))}>
+          지금 한 달 금액 {won(total)}에서 나누기 → 월세 {won(total - Number(mgmt))}</button>
+      )}
+      <div className="flex gap-2">
+        <button type="button" className="btn-primary btn-sm" disabled={busy || rent === ""}
+          onClick={() => onSave({ rent: Number(rent), mgmt_fee: mgmt === "" ? null : Number(mgmt) })}>저장</button>
+        <button type="button" className="btn-secondary btn-sm" onClick={onCancel}>취소</button>
+      </div>
+    </div>
+  );
+}
+
 function NewLeaseForm({ busy, prevEnd, onSave, onCancel }: { busy: boolean; prevEnd: string | null;
   onSave: (b: Record<string, unknown>) => void; onCancel: () => void }) {
-  const [f, setF] = useState({ tenant_name: "", tenant_phone: "", deposit: "", rent: "", due_day: "", signed_on: "", start_date: "", end_date: "", deposit_received_on: "" });
+  const [f, setF] = useState({ tenant_name: "", tenant_phone: "", deposit: "", rent: "", mgmt_fee: "", due_day: "", signed_on: "", start_date: "", end_date: "", deposit_received_on: "" });
   const set = (k: keyof typeof f, digits = false) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setF({ ...f, [k]: digits ? e.target.value.replace(/\D/g, "") : e.target.value });
   const ready = f.tenant_name.trim() && f.rent && f.due_day && f.start_date;
@@ -157,7 +195,8 @@ function NewLeaseForm({ busy, prevEnd, onSave, onCancel }: { busy: boolean; prev
       <label className="block text-xs text-slate-600">임차인 이름<input className="field mt-1 w-full" value={f.tenant_name} onChange={set("tenant_name")} /></label>
       <label className="block text-xs text-slate-600">연락처 (선택, 암호화 저장)<input className="field mt-1 w-full" inputMode="tel" value={f.tenant_phone} onChange={set("tenant_phone")} /></label>
       <label className="block text-xs text-slate-600">보증금 (원)<input className="field mt-1 w-full" inputMode="numeric" value={f.deposit} onChange={set("deposit", true)} /></label>
-      <label className="block text-xs text-slate-600">월세 (원, 관리비 포함)<input className="field mt-1 w-full" inputMode="numeric" value={f.rent} onChange={set("rent", true)} /></label>
+      <label className="block text-xs text-slate-600">월세 (원)<input className="field mt-1 w-full" inputMode="numeric" value={f.rent} onChange={set("rent", true)} /></label>
+      <label className="block text-xs text-slate-600">정액 관리비 (원, 없으면 0 · 모르면 비움)<input className="field mt-1 w-full" inputMode="numeric" value={f.mgmt_fee} onChange={set("mgmt_fee", true)} /></label>
       <label className="block text-xs text-slate-600">납부일 (매월 며칠)<input className="field mt-1 w-full" inputMode="numeric" value={f.due_day} onChange={set("due_day", true)} /></label>
       <label className="block text-xs text-slate-600">계약서 쓴 날 (임대차 신고 기한 기준)<input type="date" className="field mt-1 w-full" value={f.signed_on} onChange={set("signed_on")} /></label>
       <label className="block text-xs text-slate-600">계약 시작일<input type="date" className="field mt-1 w-full" value={f.start_date} onChange={set("start_date")} /></label>
@@ -166,7 +205,7 @@ function NewLeaseForm({ busy, prevEnd, onSave, onCancel }: { busy: boolean; prev
       <div className="flex gap-2 sm:col-span-2">
         <button type="button" className="btn-primary btn-sm" disabled={busy || !ready} onClick={() => onSave({
           tenant_name: f.tenant_name, tenant_phone: f.tenant_phone || null, deposit: Number(f.deposit || 0), rent: Number(f.rent),
-          due_day: Number(f.due_day), signed_on: f.signed_on || null, start_date: f.start_date, end_date: f.end_date || null, deposit_received_on: f.deposit_received_on || null })}>계약 넣기</button>
+          mgmt_fee: f.mgmt_fee === "" ? null : Number(f.mgmt_fee), due_day: Number(f.due_day), signed_on: f.signed_on || null, start_date: f.start_date, end_date: f.end_date || null, deposit_received_on: f.deposit_received_on || null })}>계약 넣기</button>
         <button type="button" className="btn-secondary btn-sm" onClick={onCancel}>취소</button>
       </div>
       <p className="text-xs text-slate-500 sm:col-span-2">계약서를 찍어 두려면 계약 관리에서 올리세요 (OCR 결과는 검수 후 반영).</p>

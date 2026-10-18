@@ -20,10 +20,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AuditLog, Charge, Lease, Payment, Property, Unit, UtilityBill, UtilitySetting
-from app.services.charges import due_date_for, parse_period
+from app.services.charges import UTILITY_ITEMS, due_date_for, parse_period
 from app.services.ledger import apply_credits
 
-ITEMS = {"electricity": "전기", "water": "수도", "gas": "가스", "internet": "인터넷"}
+ITEMS = UTILITY_ITEMS
 MODES = {"included": "월세·관리비에 포함 (따로 청구 안 함)", "split": "나눠서 청구", "direct": "임차인이 직접 납부"}
 METHODS = {"equal": "호실 수로 똑같이", "area": "전용면적 비율로", "manual": "호실별 금액 직접 입력"}
 SHARES = {"landlord": "몫을 나눈 뒤 집주인이 부담", "exclude": "빼고 나눔"}

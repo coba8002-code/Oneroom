@@ -14,7 +14,8 @@ interface Summary { as_of: string; units: Row[]; missed_rent_total_known: number
 interface Activity { id: string; kind: string; happened_on: string; agent_name: string | null; agent_phone: string | null; note: string | null }
 interface Detail {
   unit_id: string; unit_no: string; options: string[]; ad_text: string; activities: Activity[];
-  listing: { asking_deposit: number | null; asking_rent: number | null; available_on: string | null; note: string | null } | null;
+  listing: { asking_deposit: number | null; asking_rent: number | null; asking_mgmt_fee: number | null; mgmt_includes: string | null;
+    available_on: string | null; note: string | null } | null;
 }
 const json = (method: string, body?: unknown) => ({ method,
   ...(body !== undefined ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}) });
@@ -76,7 +77,7 @@ export default function VacancyPage() {
 
 function UnitPanel({ unitId, kinds, canWrite, onChange }: { unitId: string; kinds: Record<string, string>; canWrite: boolean; onChange: () => void }) {
   const [d, setD] = useState<Detail | null>(null);
-  const [f, setF] = useState({ deposit: "", rent: "", available_on: "", note: "" });
+  const [f, setF] = useState({ deposit: "", rent: "", mgmt: "", includes: "", available_on: "", note: "" });
   const [a, setA] = useState({ kind: "inquiry", happened_on: todayKst(), agent_name: "", agent_phone: "", note: "" });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -86,6 +87,7 @@ function UnitPanel({ unitId, kinds, canWrite, onChange }: { unitId: string; kind
     const x = await api<Detail>(`/api/v1/vacancies/${unitId}`);
     setD(x);
     setF({ deposit: x.listing?.asking_deposit?.toString() ?? "", rent: x.listing?.asking_rent?.toString() ?? "",
+      mgmt: x.listing?.asking_mgmt_fee?.toString() ?? "", includes: x.listing?.mgmt_includes ?? "",
       available_on: x.listing?.available_on ?? "", note: x.listing?.note ?? "" });
   }, [unitId]);
   useEffect(() => { load().catch((e) => setMsg({ ok: false, text: (e as Error).message })); }, [load]);
@@ -107,6 +109,12 @@ function UnitPanel({ unitId, kinds, canWrite, onChange }: { unitId: string; kind
             onChange={(e) => setF({ ...f, deposit: e.target.value.replace(/\D/g, "") })} disabled={!canWrite} /></label>
           <label className="block text-xs text-slate-600">월세 (원)<input className="field mt-1 w-full" inputMode="numeric" value={f.rent}
             onChange={(e) => setF({ ...f, rent: e.target.value.replace(/\D/g, "") })} disabled={!canWrite} /></label>
+          <label className="block text-xs text-slate-600">관리비 (원, 없으면 0)<input className="field mt-1 w-full" inputMode="numeric" value={f.mgmt}
+            onChange={(e) => setF({ ...f, mgmt: e.target.value.replace(/\D/g, "") })} disabled={!canWrite} /></label>
+          <label className="block text-xs text-slate-600">관리비에 포함된 것<input className="field mt-1 w-full" value={f.includes} maxLength={200}
+            onChange={(e) => setF({ ...f, includes: e.target.value })} placeholder="예: 수도·인터넷" disabled={!canWrite} /></label>
+          {Number(f.mgmt) >= 100000 && <p className="col-span-2 text-xs text-amber-800">월 10만원 이상 정액 관리비는 중개 광고에 항목별 금액을 나눠 적어야 합니다
+            (국토부 중개대상물 표시·광고 명시사항 세부기준, 2024.1 시행). &lsquo;포함된 것&rsquo;에 항목별 금액을 적으세요.</p>}
           <label className="block text-xs text-slate-600">입주 가능일<input type="date" className="field mt-1 w-full" value={f.available_on}
             onChange={(e) => setF({ ...f, available_on: e.target.value })} disabled={!canWrite} /></label>
           <label className="col-span-2 block text-xs text-slate-600">광고에 붙일 설명<textarea className="field mt-1 min-h-16 w-full" value={f.note}
@@ -114,7 +122,7 @@ function UnitPanel({ unitId, kinds, canWrite, onChange }: { unitId: string; kind
         </div>
         {canWrite && <button type="button" className="btn-primary btn-sm" disabled={busy}
           onClick={() => run(() => api(`/api/v1/vacancies/${unitId}/listing`, json("PUT", { asking_deposit: num(f.deposit), asking_rent: num(f.rent),
-            available_on: f.available_on || null, note: f.note || null })), "모집 조건을 저장했습니다.")}>저장</button>}
+            asking_mgmt_fee: num(f.mgmt), mgmt_includes: f.includes || null, available_on: f.available_on || null, note: f.note || null })), "모집 조건을 저장했습니다.")}>저장</button>}
         <h3 className="pt-1 font-medium">광고 문구 (직방·다방·피터팬에 붙여 넣기)</h3>
         <pre className="whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs">{d.ad_text}</pre>
         <button type="button" className="btn-secondary btn-sm" onClick={async () => {

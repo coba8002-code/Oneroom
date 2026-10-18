@@ -57,7 +57,7 @@ def baseline(session: Session, organization_id: uuid.UUID) -> list[dict]:
         .join(Property, Unit.property_id == Property.id).join(Tenant, Lease.tenant_id == Tenant.id)
         .where(Property.organization_id == organization_id, Lease.status == "active").order_by(Unit.label)).all()
     return [{"lease_id": str(le.id), "unit_no": u, "tenant_name": n, "deposit": int(le.deposit), "rent": int(le.rent),
-             "end_date": le.end_date} for le, u, n in rows]
+             "mgmt_fee": le.mgmt_fee, "end_date": le.end_date} for le, u, n in rows]
 
 
 def past_operating(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
@@ -74,11 +74,13 @@ def past_operating(session: Session, organization_id: uuid.UUID, as_of: date) ->
 
 def _summary(rows: list[dict], yield_pct: Decimal | None, opex: int | None, property_value: int | None) -> dict:
     rent_year = sum(r["rent"] for r in rows) * 12
+    # 관리비는 전월세 전환과 무관하게 그대로 — 따로 적은 계약 것만 더한다 (안 적은 계약은 월세에 섞여 있음)
+    mgmt_year = sum(r["mgmt_fee"] or 0 for r in rows) * 12
     deposits = sum(r["deposit"] for r in rows)
     dep_income = _floor(Decimal(deposits) * yield_pct / 100) if yield_pct is not None else None
-    net = rent_year + dep_income - opex if dep_income is not None and opex is not None else None
+    net = rent_year + mgmt_year + dep_income - opex if dep_income is not None and opex is not None else None
     equity = property_value - deposits if property_value is not None else None
-    return {"annual_rent": rent_year, "deposit_total": deposits, "deposit_income": dep_income, "annual_net": net,
+    return {"annual_rent": rent_year, "annual_mgmt": mgmt_year, "deposit_total": deposits, "deposit_income": dep_income, "annual_net": net,
             "equity": equity,
             "equity_yield_pct": (format((Decimal(net) * 100 / equity).quantize(Decimal("0.01")), "f")
                                  if net is not None and equity and equity > 0 else None)}

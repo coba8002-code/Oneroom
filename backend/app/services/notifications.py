@@ -25,10 +25,12 @@ from app.services.expenses import kst_date
 KINDS = ("rent_notice", "overdue_notice", "renewal_notice")
 VARIABLES = {
     "임차인": "임차인 이름", "호실": "호실 번호", "청구월": "예: 2026-11", "금액": "그 달 월세 (원)",
-    "납부일": "예: 11월 25일", "미납액": "아직 안 낸 금액 (원)", "경과일": "납부일에서 지난 날 수",
+    "관리비": "그 달 관리비 (원, 계약에 관리비를 따로 적지 않았으면 —)", "합계": "월세 + 관리비 (원)",
+    "납부일": "예: 11월 25일", "미납액": "그 달 월세·관리비 중 아직 안 낸 금액 (원)", "경과일": "납부일에서 지난 날 수",
 }
 RENEWAL_VARIABLES = {
-    "임차인": "임차인 이름", "호실": "호실 번호", "월세": "지금 월세 (원)", "보증금": "계약 보증금 (원)",
+    "임차인": "임차인 이름", "호실": "호실 번호", "월세": "지금 월세 (원)", "관리비": "지금 관리비 (원, 모르면 —)",
+    "보증금": "계약 보증금 (원)",
     "계약시작일": "예: 2025년 9월 1일", "만료일": "예: 2027년 8월 31일", "통지마감일": "만료 2개월 전 날",
 }
 VAR_RE = re.compile(r"\{([^{}]+)\}")
@@ -82,12 +84,19 @@ def _charges(session: Session, organization_id: uuid.UUID):
     return (select(Charge, Lease, Unit.label, Tenant)
             .join(Lease, Charge.lease_id == Lease.id).join(Unit, Lease.unit_id == Unit.id)
             .join(Property, Unit.property_id == Property.id).join(Tenant, Lease.tenant_id == Tenant.id)
-            .where(Property.organization_id == organization_id, Charge.kind == "rent"))  # 월세 문구용 — 공과금 청구 제외
+            .where(Property.organization_id == organization_id, Charge.kind == "rent"))  # 월세 기준 (관리비는 _ctx 가 같은 달 것을 더함)
 
 
-def _ctx(session: Session, charge: Charge, unit_no: str, tenant: Tenant, as_of: date | None = None) -> dict[str, str]:
-    outstanding = charge.amount - ledger.paid_amount(session, charge.id)
+def _ctx(session: Session, charge: Charge, lease: Lease, unit_no: str, tenant: Tenant,
+         as_of: date | None = None) -> dict[str, str]:
+    mgmt = session.scalar(select(Charge).where(Charge.lease_id == charge.lease_id, Charge.period == charge.period,
+                                               Charge.kind == "mgmt", Charge.status != "waived"))
+    outstanding = sum(c.amount - ledger.paid_amount(session, c.id) for c in (charge, mgmt) if c is not None)
+    # 관리비를 따로 적지 않은 계약은 모른다 (규칙 7) — 0 으로 쓰지 않는다
+    mgmt_amount = mgmt.amount if mgmt else (0 if lease.mgmt_fee == 0 else None)
     return {"임차인": tenant.name, "호실": unit_no, "청구월": charge.period, "금액": f"{charge.amount:,}",
+            "관리비": "—" if mgmt_amount is None else f"{mgmt_amount:,}",
+            "합계": "—" if mgmt_amount is None else f"{charge.amount + mgmt_amount:,}",
             "납부일": f"{charge.due_date.month}월 {charge.due_date.day}일", "미납액": f"{outstanding:,}",
             "경과일": str(max(0, ((as_of or charge.due_date) - charge.due_date).days))}
 
@@ -121,7 +130,7 @@ def make_rent_notices(session: Session, organization_id: uuid.UUID, period: str)
             skipped.append(f"{unit_no} 이미 만든 고지 있음")
         else:
             _new(session, organization_id, "rent_notice", charge, lease, tenant,
-                 render(cfg.rent_template, _ctx(session, charge, unit_no, tenant)))
+                 render(cfg.rent_template, _ctx(session, charge, lease, unit_no, tenant)))
             created += 1
     session.commit()
     return {"created": created, "skipped": skipped}
@@ -154,7 +163,7 @@ def make_overdue_notices(session: Session, organization_id: uuid.UUID, as_of: da
             skipped.append(f"{unit_no} {charge.period} 이미 만든 안내 있음")
         else:
             _new(session, organization_id, "overdue_notice", charge, lease, tenant,
-                 render(cfg.overdue_template, _ctx(session, charge, unit_no, tenant, as_of)))
+                 render(cfg.overdue_template, _ctx(session, charge, lease, unit_no, tenant, as_of)))
             created += 1
     session.commit()
     return {"created": created, "skipped": skipped}
@@ -192,7 +201,8 @@ def make_renewal_notices(session: Session, organization_id: uuid.UUID, as_of: da
                 Notification.status.in_(("draft", "approved", "sent", "failed")))) is not None:
             skipped.append(f"{unit_no} 이번 만료({lease.end_date.isoformat()}) 안내를 이미 만듦")
             continue
-        ctx = {"임차인": tenant.name, "호실": unit_no, "월세": f"{lease.rent:,}", "보증금": f"{lease.deposit:,}",
+        ctx = {"임차인": tenant.name, "호실": unit_no, "월세": f"{lease.rent:,}",
+               "관리비": "—" if lease.mgmt_fee is None else f"{lease.mgmt_fee:,}", "보증금": f"{lease.deposit:,}",
                "계약시작일": _korean(lease.start_date), "만료일": _korean(lease.end_date),
                "통지마감일": _korean(w.notice_until)}
         session.add(Notification(organization_id=organization_id, tenant_id=tenant.id, lease_id=lease.id,

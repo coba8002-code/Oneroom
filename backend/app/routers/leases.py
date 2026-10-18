@@ -34,6 +34,7 @@ class NewLeaseIn(BaseModel):
     tenant_phone: str | None = Field(default=None, max_length=30)
     deposit: int = 0
     rent: int
+    mgmt_fee: int | None = None  # 정액 관리비. 비우면 '따로 적지 않음'
     due_day: int
     start_date: date
     end_date: date | None = None
@@ -63,6 +64,19 @@ def new_lease(unit_id: uuid.UUID, body: NewLeaseIn, member: Member = Depends(org
               session: Session = Depends(get_session)) -> dict:
     lease = _run(lambda: svc.new_lease(session, member.organization_id, member.user_id, unit_id, **body.model_dump()))
     return {"lease_id": str(lease.id)}
+
+
+class AmountsIn(BaseModel):
+    rent: int
+    mgmt_fee: int | None = None
+
+
+@router.put("/leases/{lease_id}/amounts")
+def set_amounts(lease_id: uuid.UUID, body: AmountsIn, member: Member = Depends(org_guard),
+                session: Session = Depends(get_session)) -> dict:
+    lease = _run(lambda: svc.set_amounts(session, member.organization_id, member.user_id, lease_id,
+                                         rent=body.rent, mgmt_fee=body.mgmt_fee))
+    return {"lease_id": str(lease.id), "rent": lease.rent, "mgmt_fee": lease.mgmt_fee}
 
 
 # ── 계약 법정 체크리스트 · 계산기 ─────────────────────────────

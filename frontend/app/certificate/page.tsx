@@ -9,7 +9,8 @@ import { useMe } from "@/lib/me";
 interface Cert {
   year: number; law: string; notice: string; generated_at: string; building: string; tenant_name: string;
   unit_no: string; address: string | null;
-  lease: { start_date: string; end_date: string | null; ended_on: string | null; deposit: number; rent: number; due_day: number };
+  lease: { start_date: string; end_date: string | null; ended_on: string | null; deposit: number; rent: number; mgmt_fee: number | null; due_day: number };
+  mgmt_unknown: boolean;
   lines: { paid_on: string; amount: number; periods: string[] }[];
   total: number; count: number; pending_review_in_year: number; bank_data_to: string | null;
   bank_complete: boolean; year_in_progress: boolean;
@@ -86,7 +87,7 @@ function Paper({ c, landlord }: { c: Cert; landlord: string }) {
           {row("임대 주택", [c.address, c.unit_no.startsWith(`${c.building} `) ? null : c.building, `${c.unit_no}호`]
             .filter(Boolean).join(" "))}{/* 건물이 여러 동이면 호실 이름에 건물 이름이 이미 들어 있음 */}
           {row("계약 기간", <>{l.start_date} ~ {l.end_date ?? "—"}{l.ended_on ? ` (실제 종료 ${l.ended_on})` : ""}</>)}
-          {row("보증금 · 월세", <>{won(l.deposit)} · 월 {won(l.rent)} (매월 {l.due_day}일)</>)}
+          {row("보증금 · 월세", <>{won(l.deposit)} · 월 {won(l.rent)} (매월 {l.due_day}일){l.mgmt_fee ? ` · 관리비 월 ${won(l.mgmt_fee)} 별도` : ""}</>)}
           {row("대상 기간", `${c.year}년 1월 1일 ~ 12월 31일 입금분`)}
         </tbody>
       </table>
@@ -104,7 +105,9 @@ function Paper({ c, landlord }: { c: Cert; landlord: string }) {
       <div className="space-y-1 border-t border-slate-200 pt-3 text-xs text-slate-500">
         <p>{c.notice}</p>
         <p>참고 법령: {c.law} · 기준: {c.bank_data_to ? `${c.bank_data_to}까지의 통장 내역` : "통장 내역 없음"} · 작성 {kst(c.generated_at)} (ROOMAX)</p>
-        <p>보증금은 월세가 아니므로 넣지 않았습니다.</p>
+        <p>보증금{c.mgmt_unknown ? "" : "·관리비·공과금"}은 월세가 아니므로 넣지 않았습니다.</p>
+        {c.mgmt_unknown && <p className="font-medium text-amber-800">이 계약은 관리비를 월세와 따로 적지 않아, 위 금액에 관리비가 섞여 있을 수 있습니다.
+          관리비가 있었다면 호실·계약 화면의 &lsquo;월세·관리비&rsquo;에서 나눠 적은 뒤 다시 확인하세요 (공과금은 이미 뺐습니다).</p>}
       </div>
     </article>
   );

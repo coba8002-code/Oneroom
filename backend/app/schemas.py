@@ -23,6 +23,7 @@ class UnitIn(BaseModel):
     tenant_phone: str | None = None
     deposit: int | None = Field(default=None, ge=0)
     rent: int | None = Field(default=None, ge=0)
+    mgmt_fee: int | None = Field(default=None, ge=0)  # 정액 관리비 (선택). 비우면 '따로 적지 않음'
     due_day: int | None = Field(default=None, ge=1, le=31)
     start_date: date | None = None
     end_date: date | None = None
@@ -271,6 +272,8 @@ class MonthlyReportOut(BaseModel):
     bank_covered: bool  # 은행 내역이 그 달 1일 이후까지 있는가
     rent_charged: int | None
     rent_received: int | None  # 월세 몫만 (같은 입금으로 채운 공과금 청구는 아래로)
+    mgmt_charged: int | None = None  # 관리비 청구 합 (따로 청구하지 않았으면 비움)
+    mgmt_received: int | None = None
     utility_charged: int | None = None  # 공과금 배분 청구 합 (없으면 비움)
     utility_received: int | None = None
     operating: dict[str, int | None]
@@ -414,6 +417,7 @@ class ContractOut(BaseModel):
     tenant_name: str
     deposit: int
     rent: int
+    mgmt_fee: int | None = None
     due_day: int
     start_date: date
     end_date: date | None
@@ -446,6 +450,7 @@ class VerifyIn(BaseModel):
     """관리자가 확정한 최종 값 (화면에서 OCR 후보로 미리 채움)."""
     deposit: int = Field(ge=0)
     rent: int = Field(ge=0)
+    mgmt_fee: int | None = Field(default=None, ge=0)  # 정액 관리비. 비우면 '따로 적지 않음'
     due_day: int = Field(ge=1, le=31)
     start_date: date
     end_date: date | None = None

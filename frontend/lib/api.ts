@@ -11,6 +11,7 @@ export interface UnitIn {
   tenant_phone: string | null;
   deposit: number | null;
   rent: number | null;
+  mgmt_fee: number | null;  // 정액 관리비 (선택). 비우면 '따로 적지 않음'
   due_day: number | null;
   start_date: string | null;
   end_date: string | null;
@@ -233,7 +234,7 @@ export interface Receivables {
 }
 
 /** 청구 종류 — 월세 외에는 공과금 배분 청구 */
-export const CHARGE_KIND: Record<string, string> = { rent: "월세", electricity: "전기", water: "수도", gas: "가스", internet: "인터넷" };
+export const CHARGE_KIND: Record<string, string> = { rent: "월세", mgmt: "관리비", electricity: "전기", water: "수도", gas: "가스", internet: "인터넷" };
 export const kindTag = (kind?: string) => (kind && kind !== "rent" ? ` · ${CHARGE_KIND[kind] ?? kind}` : "");
 
 /** 저장은 UTC, 표시는 KST */
@@ -263,6 +264,7 @@ export interface Dashboard {
     status: "occupied" | "vacant" | "owner";
     tenant_name: string | null;
     rent: number | null;
+    mgmt_fee: number | null;  // 따로 적은 정액 관리비 (null = 모름)
     due_day: number | null;
     due_date: string | null;
     charge_status: "paid" | "partial" | "open" | "waived" | "none" | null;
@@ -273,6 +275,9 @@ export interface Dashboard {
   money: {
     rent_charged: number | null;  // null = 모름 → '—'
     rent_received: number | null;
+    income_charged: number | null;  // 월세 + 따로 청구한 관리비
+    income_received: number | null;
+    mgmt_charged: number | null;
     overdue_total: number;
     overdue_count: number;
     operating_total: number | null;
@@ -324,13 +329,14 @@ export interface Contract {
   tenant_name: string;
   deposit: number;
   rent: number;
+  mgmt_fee: number | null;
   due_day: number;
   start_date: string;
   end_date: string | null;
   documents: DocumentSummary[];
 }
 
-export type ContractField = "deposit" | "rent" | "due_day" | "start_date" | "end_date";
+export type ContractField = "deposit" | "rent" | "mgmt_fee" | "due_day" | "start_date" | "end_date";
 
 export interface DocumentDetail {
   id: string;
