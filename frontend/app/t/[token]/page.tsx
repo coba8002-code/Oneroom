@@ -9,7 +9,7 @@ interface View {
   unit_no: string; building: string;
   lease: { start_date: string; end_date: string | null; rent: number; due_day: number; deposit: number; deposit_received: number | null };
   next_due: string | null;
-  charges: { period: string; due_date: string; amount: number; paid: number; state: string; state_label: string }[];
+  charges: { period: string; due_date: string; amount: number; paid: number; state: string; state_label: string; kind: string; kind_label: string }[];
   bank_data_as_of: string | null;
   repairs: { reported_on: string; description: string; status: string; completed_on: string | null }[];
   notices: { title: string; body: string | null; starts_on: string; ends_on: string | null; for_unit: boolean }[];
@@ -83,8 +83,8 @@ function Body({ v, token, reload }: { v: View; token: string; reload: () => Prom
         {v.charges.length === 0 ? <p className="text-sm text-slate-500">아직 청구가 없습니다.</p> : (
           <ul className="divide-y divide-slate-100 text-sm">
             {v.charges.map((c) => (
-              <li key={c.period} className="flex items-center justify-between gap-2 py-2 tabular-nums">
-                <span>{c.period}<span className="block text-xs text-slate-500">납부일 {c.due_date}</span></span>
+              <li key={c.period + c.kind} className="flex items-center justify-between gap-2 py-2 tabular-nums">
+                <span>{c.period} {c.kind_label}<span className="block text-xs text-slate-500">납부일 {c.due_date}</span></span>
                 <span className="text-right">{won(c.amount)}
                   {c.paid > 0 && c.paid < c.amount && <span className="block text-xs text-slate-500">확인 {won(c.paid)}</span>}</span>
                 <span className={`chip shrink-0 ${TONE[c.state] ?? TONE.open}`}>{c.state_label}</span>

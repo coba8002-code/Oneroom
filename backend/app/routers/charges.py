@@ -50,5 +50,5 @@ def list_charges(
 def _out(c: Charge, unit_no: str) -> ChargeOut:
     return ChargeOut(
         id=c.id, lease_id=c.lease_id, unit_no=unit_no, period=c.period,
-        due_date=c.due_date, amount=c.amount, status=c.status,
+        due_date=c.due_date, amount=c.amount, status=c.status, kind=c.kind,
     )

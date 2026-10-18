@@ -53,7 +53,8 @@ def generate_charges(
     existing = {
         c.lease_id: c
         for c in session.scalars(
-            select(Charge).where(Charge.period == period, Charge.lease_id.in_([r[0].id for r in rows]))
+            select(Charge).where(Charge.period == period, Charge.kind == "rent",
+                                Charge.lease_id.in_([r[0].id for r in rows]))
         )
     }
 

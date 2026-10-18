@@ -61,7 +61,7 @@ def build(session: Session, organization_id: uuid.UUID, period: str, today: date
             .order_by(Unit.label)).all():
         paid = ledger.paid_amount(session, c.id)
         charges.append({"unit_no": label, "due_date": c.due_date, "amount": c.amount, "paid": int(paid),
-                        "status": c.status})
+                        "status": c.status, "kind": c.kind})
 
     unreturned = session.scalars(
         select(Deposit.amount).join(Lease, Deposit.lease_id == Lease.id).join(Unit, Lease.unit_id == Unit.id)
@@ -97,6 +97,7 @@ def build(session: Session, organization_id: uuid.UUID, period: str, today: date
                    "complete": m["complete"]},
         "occupancy": {"rental_units": len(units), "leased_in_month": len(set(leased))},
         "money": {"rent_charged": m["rent_charged"], "rent_received": m["rent_received"],
+                  "utility_charged": m["utility_charged"], "utility_received": m["utility_received"],
                   "operating": {LABELS.get(k, k): v for k, v in m["operating"].items()},
                   "operating_total": m["operating_total"], "noi": m["noi"],
                   "excluded": {LABELS.get(k, k): m["excluded"][k] for k in NON_OPERATING},
@@ -140,6 +141,7 @@ def to_xlsx(r: dict) -> bytes:
         ["입금 검토 대기 (전체)", st["pending_review_in"]], [],
         ["임대 호실 / 그 달 계약 있던 호실", f'{r["occupancy"]["rental_units"]} / {r["occupancy"]["leased_in_month"]}'],
         ["월세 청구", _v(mo["rent_charged"])], ["월세 입금 (확정)", _v(mo["rent_received"])],
+        ["공과금 청구 (배분)", _v(mo["utility_charged"])], ["공과금 입금 (확정)", _v(mo["utility_received"])],
         ["미수 (기준일, 납부일 지남)", r["overdue"]["total"]],
         *[[f"운영비 — {k}", _v(v)] for k, v in mo["operating"].items()],
         ["운영비 합계", _v(mo["operating_total"])], ["순운영수익", _v(mo["noi"])],
