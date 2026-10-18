@@ -16,7 +16,8 @@ interface Annual {
   status: { months_with_bank_data: string[]; months_without_bank_data: string[]; unconfirmed_transactions: number;
     pending_review_in: number; pending_review_out: number; operating_without_receipt: number; year_complete: boolean };
   months: Month[];
-  totals_known_months: { rent_charged: number | null; rent_received: number | null; operating_total: number | null; by_category: Record<string, number> };
+  totals_known_months: { rent_charged: number | null; rent_received: number | null; operating_total: number | null;
+    mgmt_charged: number | null; mgmt_received: number | null; utility_charged: number | null; utility_received: number | null; by_category: Record<string, number> };
   deposits_at: string; deposits: { unit_no: string; tenant_name: string; amount: number; received_at: string; returned_at: string | null; lease_status: string }[];
   deposits_total: number; expenses: Exp[];
 }
@@ -102,6 +103,12 @@ export default function TaxPage() {
               <dl className="space-y-1">
                 <div className="flex justify-between"><dt>월세 청구 (납부일 기준)</dt><dd className="tabular-nums">{dash(d.totals_known_months.rent_charged)}</dd></div>
                 <div className="flex justify-between"><dt>월세 입금 (확정 입금 기준)</dt><dd className="tabular-nums">{dash(d.totals_known_months.rent_received)}</dd></div>
+                {d.totals_known_months.mgmt_charged != null && <>
+                  <div className="flex justify-between"><dt>관리비 청구</dt><dd className="tabular-nums">{dash(d.totals_known_months.mgmt_charged)}</dd></div>
+                  <div className="flex justify-between"><dt>관리비 입금 (확정 입금 기준)</dt><dd className="tabular-nums">{dash(d.totals_known_months.mgmt_received)}</dd></div></>}
+                {d.totals_known_months.utility_charged != null && <>
+                  <div className="flex justify-between"><dt>공과금 청구 (배분)</dt><dd className="tabular-nums">{dash(d.totals_known_months.utility_charged)}</dd></div>
+                  <div className="flex justify-between"><dt>공과금 입금 (확정 입금 기준)</dt><dd className="tabular-nums">{dash(d.totals_known_months.utility_received)}</dd></div></>}
                 <div className="flex justify-between"><dt>운영비</dt><dd className="tabular-nums">{dash(d.totals_known_months.operating_total)}</dd></div>
                 {Object.entries(d.totals_known_months.by_category).map(([k, v]) => (
                   <div key={k} className="flex justify-between pl-3 text-xs text-slate-600"><dt>{LABEL[k]}</dt><dd>{won(v)}</dd></div>))}

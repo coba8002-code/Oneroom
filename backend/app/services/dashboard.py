@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, aliased
 from app.models import Charge, Deposit, Lease, Payment, Property, Tenant, Transaction, TransactionAllocation, Unit
 from app.services import (backup, fixtures, lease_renewal, lease_rules, ledger, receivables, reports, routines,
                           tax_calendar, tenant_portal)
-from app.services.charges import due_date_for
+from app.services.charges import MONTHLY, due_date_for
 from app.services.expenses import kst_date
 from app.services.matching import org_transactions
 
@@ -61,23 +61,28 @@ def _due_today(session: Session, leases: dict, units: list, as_of: date) -> list
     out = []
     unit_no = {u.id: u.label for u in units}
     for lease, name in leases.values():
-        for c in session.scalars(select(Charge).where(Charge.lease_id == lease.id, Charge.due_date == as_of,
-                                                      Charge.kind == "rent", Charge.status != "waived")):
-            paid = ledger.paid_amount(session, c.id)
-            last = session.execute(
-                select(Transaction.occurred_at, Transaction.source)
-                .join(TransactionAllocation, TransactionAllocation.transaction_id == Transaction.id)
-                .join(Payment, Payment.transaction_allocation_id == TransactionAllocation.id)
-                .where(Payment.charge_id == c.id).order_by(Transaction.occurred_at.desc()).limit(1)).first()
-            review = session.scalar(select(func.count()).select_from(TransactionAllocation).where(
-                TransactionAllocation.lease_id == lease.id, TransactionAllocation.review_status == "pending",
-                TransactionAllocation.category == "rent"))
-            status = ("paid" if paid >= c.amount else "partial" if paid > 0
-                      else "review" if review else "not_yet")
-            out.append({"unit_no": unit_no[lease.unit_id], "tenant_name": name, "period": c.period,
-                        "amount": c.amount, "paid": paid, "status": status,
-                        "paid_at": last[0] if last else None, "via": last[1] if last else None,
-                        "review_count": review})
+        # 월세와 관리비는 같은 납부일의 한 번 낼 돈으로 묶어 보여 준다
+        cs = session.scalars(select(Charge).where(Charge.lease_id == lease.id, Charge.due_date == as_of,
+                                                  Charge.kind.in_(MONTHLY), Charge.status != "waived")
+                             .order_by(ledger.KIND_ORDER)).all()
+        if not cs:
+            continue
+        amount = sum(c.amount for c in cs)
+        paid = sum(ledger.paid_amount(session, c.id) for c in cs)
+        last = session.execute(
+            select(Transaction.occurred_at, Transaction.source)
+            .join(TransactionAllocation, TransactionAllocation.transaction_id == Transaction.id)
+            .join(Payment, Payment.transaction_allocation_id == TransactionAllocation.id)
+            .where(Payment.charge_id.in_([c.id for c in cs])).order_by(Transaction.occurred_at.desc()).limit(1)).first()
+        review = session.scalar(select(func.count()).select_from(TransactionAllocation).where(
+            TransactionAllocation.lease_id == lease.id, TransactionAllocation.review_status == "pending",
+            TransactionAllocation.category == "rent"))
+        status = ("paid" if paid >= amount else "partial" if paid > 0
+                  else "review" if review else "not_yet")
+        out.append({"unit_no": unit_no[lease.unit_id], "tenant_name": name, "period": cs[0].period,
+                    "amount": amount, "paid": paid, "status": status,
+                    "paid_at": last[0] if last else None, "via": last[1] if last else None,
+                    "review_count": review})
     return sorted(out, key=lambda x: x["unit_no"])
 
 
@@ -101,20 +106,29 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
     charges = {c.lease_id: c for c in session.scalars(select(Charge).where(
         Charge.period == period, Charge.kind == "rent",
         Charge.lease_id.in_([lease.id for lease, _ in leases.values()])))}
+    mgmt = {c.lease_id: c for c in session.scalars(select(Charge).where(
+        Charge.period == period, Charge.kind == "mgmt", Charge.status != "waived",
+        Charge.lease_id.in_([lease.id for lease, _ in leases.values()])))}
 
     unit_rows = []
     for u in units:
         row = {"unit_no": u.label, "floor": u.floor, "use_type": u.use_type, "status": u.status,
-               "tenant_name": None, "rent": None, "due_day": None, "due_date": None, "charge_status": None,
+               "tenant_name": None, "rent": None, "mgmt_fee": None, "due_day": None, "due_date": None, "charge_status": None,
                "outstanding": None, "paid_on": None, "lease_end": None}
         if u.id in leases:
             lease, name = leases[u.id]
             c = charges.get(lease.id)
-            row.update(tenant_name=name, rent=lease.rent, due_day=lease.due_day, lease_end=lease.end_date,
+            m = mgmt.get(lease.id) if c else None  # 그 달 관리비 청구 — 월세와 합쳐 상태·미납을 본다
+            status = c.status if c else "none"
+            if m is not None and status == "paid" and m.status != "paid":
+                status = "partial"
+            row.update(tenant_name=name, rent=lease.rent, mgmt_fee=lease.mgmt_fee, due_day=lease.due_day,
+                       lease_end=lease.end_date,
                        due_date=c.due_date if c else due_date_for(period, lease.due_day),
-                       charge_status=c.status if c else "none",
-                       outstanding=(c.amount - ledger.paid_amount(session, c.id)) if c else None,
-                       paid_on=_paid_on(session, c.id) if c and c.status == "paid" else None)
+                       charge_status=status,
+                       outstanding=sum(x.amount - ledger.paid_amount(session, x.id) for x in (c, m) if x is not None)
+                       if c else None,
+                       paid_on=_paid_on(session, c.id) if c and status == "paid" else None)
         unit_rows.append(row)
 
     counts = {
@@ -263,6 +277,12 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
         "money": {
             "rent_charged": month["rent_charged"],
             "rent_received": month["rent_received"],
+            # 홈의 '임대수입'은 월세 + 따로 청구한 관리비 (공과금은 운영비를 되돌려 받는 돈이라 뺌)
+            "income_charged": (month["rent_charged"] + (month["mgmt_charged"] or 0)
+                               if month["rent_charged"] is not None else None),
+            "income_received": (month["rent_received"] + (month["mgmt_received"] or 0)
+                                if month["rent_received"] is not None else None),
+            "mgmt_charged": month["mgmt_charged"],
             "overdue_total": sum(i.outstanding for i in overdue),
             "overdue_count": len(overdue),
             "operating_total": month["operating_total"],

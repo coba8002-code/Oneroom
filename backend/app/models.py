@@ -175,6 +175,7 @@ class Lease(Base):
     __table_args__ = (
         CheckConstraint("due_day BETWEEN 1 AND 31", name="ck_leases_due_day"),
         CheckConstraint("rent >= 0 AND deposit >= 0", name="ck_leases_amounts"),
+        CheckConstraint("mgmt_fee IS NULL OR mgmt_fee >= 0", name="ck_leases_mgmt_fee"),
     )
     id: Mapped[uuid.UUID] = pk()
     unit_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("units.id"), index=True)
@@ -182,7 +183,9 @@ class Lease(Base):
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date | None] = mapped_column(Date)
     deposit: Mapped[int] = mapped_column(BigInteger, default=0)
-    rent: Mapped[int] = mapped_column(BigInteger, default=0)  # 관리비 포함 월세
+    rent: Mapped[int] = mapped_column(BigInteger, default=0)  # 월세. mgmt_fee 가 비어 있으면 관리비가 섞여 있을 수 있음
+    # 정액 관리비 — 월세와 따로 청구(charges.kind='mgmt'). None = 따로 적지 않음(모름), 0 = 관리비 없음
+    mgmt_fee: Mapped[int | None] = mapped_column(BigInteger)
     due_day: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), default="active")  # active | ended | draft
     signed_on: Mapped[date | None] = mapped_column(Date)  # 계약 체결일 (임대차 신고 기한 30일의 기준). 모르면 비움
@@ -288,7 +291,7 @@ class Charge(Base):
     due_date: Mapped[date] = mapped_column(Date)
     amount: Mapped[int] = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(String(20), default="open")  # open | partial | paid | waived
-    # rent: 월세 | electricity·water·gas·internet: 공과금 배분 청구 (utility_bill_id 로 고지서와 이어짐)
+    # rent: 월세 | mgmt: 정액 관리비 (leases.mgmt_fee) | electricity·water·gas·internet: 공과금 배분 청구 (utility_bill_id 로 고지서와 이어짐)
     kind: Mapped[str] = mapped_column(String(20), default="rent", server_default="rent")
     utility_bill_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("utility_bills.id"), index=True)
     created_at: Mapped[datetime] = created_at()
@@ -611,6 +614,8 @@ class VacancyListing(Base):
     unit_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("units.id"), index=True)
     asking_deposit: Mapped[int | None] = mapped_column(BigInteger)
     asking_rent: Mapped[int | None] = mapped_column(BigInteger)
+    asking_mgmt_fee: Mapped[int | None] = mapped_column(BigInteger)  # 정액 관리비 (비우면 광고에 넣지 않음)
+    mgmt_includes: Mapped[str | None] = mapped_column(String(200))  # 관리비에 포함된 항목 (예: 수도·인터넷)
     available_on: Mapped[date | None] = mapped_column(Date)
     note: Mapped[str | None] = mapped_column(Text)  # 광고에 붙일 설명 (관리자 입력)
     updated_at: Mapped[datetime] = created_at()

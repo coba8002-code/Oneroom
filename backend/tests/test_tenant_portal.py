@@ -50,7 +50,7 @@ def test_tenant_sees_own_ledger_only(client, anon_client, org, session_factory):
 
     v = anon_client.get(f"/api/v1/tenant/{token}").json()
     assert v["unit_no"] == "101"
-    assert v["lease"] == {"start_date": "2025-03-01", "end_date": "2027-02-28", "rent": 450000, "due_day": 1,
+    assert v["lease"] == {"start_date": "2025-03-01", "end_date": "2027-02-28", "rent": 450000, "mgmt_fee": None, "due_day": 1,
                           "deposit": 5_000_000, "deposit_received": 5_000_000}
     nov = next(c for c in v["charges"] if c["period"] == "2026-11")
     assert (nov["amount"], nov["paid"], nov["state"], nov["state_label"]) == (450000, 450000, "paid", "입금 확인")

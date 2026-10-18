@@ -94,7 +94,7 @@ def test_extract_from_until_pattern_and_korean_only_amount():
 
 def test_extracts_no_personal_info():
     f = extract(CONTRACT_TEXT)
-    assert set(f) == {"deposit", "rent", "due_day", "start_date", "end_date"}
+    assert set(f) == {"deposit", "rent", "mgmt_fee", "due_day", "start_date", "end_date"}
     assert not any("010-1234" in (v["evidence"] or "") or "홍길동" in (v["evidence"] or "") for v in f.values())
 
 

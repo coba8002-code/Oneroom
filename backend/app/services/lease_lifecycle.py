@@ -102,7 +102,8 @@ def undo_end(session: Session, organization_id: uuid.UUID, user_id, lease_id: uu
 
 def new_lease(session: Session, organization_id: uuid.UUID, user_id, unit_id: uuid.UUID, *, tenant_name: str,
               tenant_phone: str | None, deposit: int, rent: int, due_day: int, start_date: date,
-              end_date: date | None, deposit_received_on: date | None, signed_on: date | None = None) -> Lease:
+              end_date: date | None, deposit_received_on: date | None, signed_on: date | None = None,
+              mgmt_fee: int | None = None) -> Lease:
     unit = session.scalar(select(Unit).join(Property, Unit.property_id == Property.id)
                           .where(Unit.id == unit_id, Property.organization_id == organization_id))
     if unit is None:
@@ -113,8 +114,8 @@ def new_lease(session: Session, organization_id: uuid.UUID, user_id, unit_id: uu
         raise LeaseError("이 호실에는 진행 중인 계약이 있습니다. 먼저 종료하세요")
     if not tenant_name.strip():
         raise LeaseError("임차인 이름을 적어 주세요")
-    if deposit < 0 or rent < 0 or not 1 <= due_day <= 31:
-        raise LeaseError("보증금·월세는 0원 이상, 납부일은 1~31일입니다")
+    if deposit < 0 or rent < 0 or (mgmt_fee is not None and mgmt_fee < 0) or not 1 <= due_day <= 31:
+        raise LeaseError("보증금·월세·관리비는 0원 이상, 납부일은 1~31일입니다")
     if end_date is not None and end_date <= start_date:
         raise LeaseError("만료일은 시작일보다 뒤여야 합니다")
     prev_end = session.scalar(select(func.max(Lease.ended_on)).where(Lease.unit_id == unit.id))
@@ -125,13 +126,33 @@ def new_lease(session: Session, organization_id: uuid.UUID, user_id, unit_id: uu
     session.add(tenant)
     session.flush()
     lease = Lease(unit_id=unit.id, tenant_id=tenant.id, start_date=start_date, end_date=end_date, deposit=deposit,
-                  rent=rent, due_day=due_day, status="active", signed_on=signed_on)
+                  rent=rent, mgmt_fee=mgmt_fee, due_day=due_day, status="active", signed_on=signed_on)
     session.add(lease)
     session.flush()
     if deposit:
         session.add(Deposit(lease_id=lease.id, amount=deposit, received_at=deposit_received_on))  # 부채 — 수입 아님
     unit.status = "occupied"
     _audit(session, user_id, "lease.create", lease.id, {"unit_no": unit.unit_no})  # 이름·연락처는 기록하지 않음
+    session.commit()
+    return lease
+
+
+def set_amounts(session: Session, organization_id: uuid.UUID, user_id, lease_id: uuid.UUID, *, rent: int,
+                mgmt_fee: int | None) -> Lease:
+    """월세·정액 관리비를 고친다 (예: 관리비가 섞여 있던 월세를 '월세 + 관리비'로 나눠 적기).
+    이미 만든 청구는 그대로 — 다음 청구부터 적용. mgmt_fee=None 은 '따로 적지 않음'."""
+    lease = session.scalar(select(Lease).join(Unit, Lease.unit_id == Unit.id)
+                           .join(Property, Unit.property_id == Property.id)
+                           .where(Lease.id == lease_id, Property.organization_id == organization_id))
+    if lease is None:
+        raise LookupError("계약을 찾을 수 없습니다")
+    if lease.status != "active":
+        raise LeaseError("진행 중인 계약만 고칠 수 있습니다")
+    if rent < 0 or (mgmt_fee is not None and mgmt_fee < 0):
+        raise LeaseError("월세·관리비는 0원 이상입니다")
+    before = {"rent": lease.rent, "mgmt_fee": lease.mgmt_fee}
+    lease.rent, lease.mgmt_fee = rent, mgmt_fee
+    _audit(session, user_id, "lease.amounts", lease.id, {"before": before, "after": {"rent": rent, "mgmt_fee": mgmt_fee}})
     session.commit()
     return lease
 
@@ -147,6 +168,6 @@ def history(session: Session, organization_id: uuid.UUID) -> list[dict]:
         leases.setdefault(lease.unit_id, []).append({
             "lease_id": str(lease.id), "tenant_name": name, "status": lease.status, "start_date": lease.start_date,
             "end_date": lease.end_date, "signed_on": lease.signed_on, "ended_on": lease.ended_on, "end_reason": lease.end_reason,
-            "deposit": lease.deposit, "rent": lease.rent, "deposit_unreturned": _unreturned(session, lease.id)})
+            "deposit": lease.deposit, "rent": lease.rent, "mgmt_fee": lease.mgmt_fee, "deposit_unreturned": _unreturned(session, lease.id)})
     return [{"unit_id": str(u.id), "unit_no": u.label, "use_type": u.use_type, "status": u.status,
              "leases": leases.get(u.id, [])} for u in units]

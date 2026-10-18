@@ -317,3 +317,30 @@ test("공과금: 항목별 처리 방식 → 수도 고지서 → 나눈 결과 
   await page.goto(path);
   await expect(page.getByText("2026-11 수도")).toBeVisible();
 });
+
+test("관리비 분리: 섞인 월세를 '월세 + 관리비'로 나눠 적기 → 한 번 입금에 둘 다 완납 → 확인서는 월세만", async ({ page }) => {
+  const org = await signupAndOnboard(page);
+  await page.goto("/units");
+  const unit = page.locator("section.card").filter({ has: page.getByRole("heading", { name: "101호" }) });
+  await expect(unit).toContainText("관리비 따로 안 적음");
+  await unit.getByRole("button", { name: "월세·관리비" }).click();
+  await unit.getByLabel("정액 관리비 (원)").fill("50000");
+  await unit.getByRole("button", { name: /450,000원에서 나누기 → 월세 400,000원/ }).click();
+  await expect(unit.getByLabel("월세 (원)")).toHaveValue("400000");
+  await unit.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText("101호 월세·관리비를 고쳤습니다.", { exact: false })).toBeVisible();
+  await expect(unit).toContainText("월세 400,000원 · 관리비 50,000원");
+
+  await api(page, "POST", `/api/v1/charges/generate?organization_id=${org}&period=2026-11`);
+  await importBank(page, org, sampleBank());  // 임차인A 450,000 = 월세 400,000 + 관리비 50,000
+  await api(page, "POST", `/api/v1/matching/run?organization_id=${org}`);
+  const rows = await api(page, "GET", `/api/v1/charges?organization_id=${org}&period=2026-11`);
+  const of101 = rows.filter((c: { unit_no: string }) => c.unit_no === "101").map((c: { kind: string; status: string }) => `${c.kind}:${c.status}`);
+  expect(of101.sort()).toEqual(["mgmt:paid", "rent:paid"]);
+
+  await unit.getByRole("link", { name: "납부 확인서" }).click();
+  await page.getByLabel("연도 (입금일 기준)").selectOption("2026");
+  const paper = page.locator("article");
+  await expect(paper.locator("tbody tr").filter({ hasText: "2026-11-01" })).toContainText("400,000원");
+  await expect(paper).toContainText("관리비 월 50,000원 별도");
+});

@@ -34,7 +34,7 @@ def list_contracts(organization_id: uuid.UUID, session: Session = Depends(get_se
         docs.setdefault(d.lease_id, []).append(d)
     return [ContractOut(
         lease_id=lease.id, unit_no=unit_no, tenant_name=name, deposit=lease.deposit, rent=lease.rent,
-        due_day=lease.due_day, start_date=lease.start_date, end_date=lease.end_date,
+        mgmt_fee=lease.mgmt_fee, due_day=lease.due_day, start_date=lease.start_date, end_date=lease.end_date,
         documents=[DocumentSummary(id=d.id, original_name=d.original_name, created_at=d.created_at,
                                    ocr_status=d.ocr_status, verified_at=d.verified_at)
                    for d in docs.get(lease.id, [])],
@@ -101,7 +101,10 @@ def retry(doc_id: uuid.UUID, organization_id: uuid.UUID, session: Session = Depe
 def verify(doc_id: uuid.UUID, organization_id: uuid.UUID, body: VerifyIn,
            session: Session = Depends(get_session)) -> DocumentOut:
     try:
-        doc = contracts.verify(session, organization_id, doc_id, **body.model_dump())
+        fields = body.model_dump()
+        if "mgmt_fee" not in body.model_fields_set:
+            fields.pop("mgmt_fee")  # 보내지 않았으면 기존 관리비 유지
+        doc = contracts.verify(session, organization_id, doc_id, **fields)
     except LookupError as e:
         raise HTTPException(404, str(e))
     except MatchError as e:

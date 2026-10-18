@@ -21,9 +21,10 @@ DUE_DAY = re.compile(r"매\s*월\s*(\d{1,2})\s*일")
 
 DEPOSIT_KEYS = ("보증금",)
 RENT_KEYS = ("차임", "월세", "월차임")
+MGMT_KEYS = ("관리비",)  # 표준계약서(2023 개정) '관리비 (정액인 경우) 총액 금 ___원'
 PERIOD_KEYS = ("임대차기간", "임대차 기간", "존속기간", "임대기간", "계약기간")
 # 금액 문장의 경계. '보증금 및 차임을 아래와 같이…' 처럼 키워드가 이어 나오면 다음 키워드에서 끊는다
-MONEY_KEYS = DEPOSIT_KEYS + RENT_KEYS + ("계약금", "중도금", "잔금")
+MONEY_KEYS = DEPOSIT_KEYS + RENT_KEYS + MGMT_KEYS + ("계약금", "중도금", "잔금")
 NEXT_MONEY_KEY = re.compile("|".join(re.escape(k) for k in MONEY_KEYS))
 
 
@@ -97,12 +98,14 @@ def _field(value=None, evidence: str | None = None) -> dict:
 
 
 def extract(text: str) -> dict[str, dict]:
-    fields = {k: _field() for k in ("deposit", "rent", "due_day", "start_date", "end_date")}
+    fields = {k: _field() for k in ("deposit", "rent", "mgmt_fee", "due_day", "start_date", "end_date")}
 
     if (d := _money_after(text, DEPOSIT_KEYS)):
         fields["deposit"] = _field(*d)
     if (r := _money_after(text, RENT_KEYS)):
         fields["rent"] = _field(*r)
+    if (g := _money_after(text, MGMT_KEYS)):  # 없으면 비움 — '관리비 없음'으로 단정하지 않는다
+        fields["mgmt_fee"] = _field(*g)
 
     # 납부일: 차임 문장 근처의 '매월 n일' 우선
     for key in RENT_KEYS:

@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models import Charge, Expense, Lease, Payment, Property, Transaction, TransactionAllocation, Unit
-from app.services.charges import parse_period
+from app.services.charges import UTILITY_ITEMS, parse_period
 from app.services.expenses import NON_OPERATING, OPERATING
 from app.services.matching import org_transactions
 
@@ -58,19 +58,25 @@ def monthly(session: Session, organization_id: uuid.UUID, period: str) -> dict:
         .join(Property, Unit.property_id == Property.id)
         .where(Property.organization_id == organization_id, Charge.period == period, Charge.kind == "rent")).one()
 
-    utility_charged = session.scalar(
-        select(func.coalesce(func.sum(Charge.amount), 0))
-        .join(Lease, Charge.lease_id == Lease.id)
-        .join(Unit, Lease.unit_id == Unit.id)
-        .join(Property, Unit.property_id == Property.id)
-        .where(Property.organization_id == organization_id, Charge.period == period, Charge.kind != "rent"))
-    # 공과금 청구에 채워진 입금 — '월세 입금'에서 빼서 따로 보여 준다 (임차인이 월세와 함께 보낸 돈)
-    utility_paid = session.scalar(
-        select(func.coalesce(func.sum(Payment.amount), 0))
-        .join(Charge, Payment.charge_id == Charge.id)
-        .join(TransactionAllocation, Payment.transaction_allocation_id == TransactionAllocation.id)
-        .where(TransactionAllocation.transaction_id.in_(txn_ids), TransactionAllocation.review_status == "approved",
-               Charge.kind != "rent"))
+    def charged(kinds) -> int:
+        return session.scalar(
+            select(func.coalesce(func.sum(Charge.amount), 0))
+            .join(Lease, Charge.lease_id == Lease.id)
+            .join(Unit, Lease.unit_id == Unit.id)
+            .join(Property, Unit.property_id == Property.id)
+            .where(Property.organization_id == organization_id, Charge.period == period, Charge.kind.in_(kinds)))
+
+    # 관리비·공과금 청구에 채워진 입금 — '월세 입금'에서 빼서 따로 보여 준다 (임차인이 월세와 함께 보낸 돈)
+    def paid_into(kinds) -> int:
+        return session.scalar(
+            select(func.coalesce(func.sum(Payment.amount), 0))
+            .join(Charge, Payment.charge_id == Charge.id)
+            .join(TransactionAllocation, Payment.transaction_allocation_id == TransactionAllocation.id)
+            .where(TransactionAllocation.transaction_id.in_(txn_ids), TransactionAllocation.review_status == "approved",
+                   Charge.kind.in_(kinds)))
+
+    utility_charged, utility_paid = charged(UTILITY_ITEMS), paid_into(UTILITY_ITEMS)
+    mgmt_charged, mgmt_paid = charged(("mgmt",)), paid_into(("mgmt",))
 
     approved = aliased(TransactionAllocation)
     unconfirmed = dict(session.execute(
@@ -91,8 +97,8 @@ def monthly(session: Session, organization_id: uuid.UUID, period: str) -> dict:
     known = lambda v: int(v) if bank_covered else None  # noqa: E731
     operating = {c: known(expenses.get(c, 0)) for c in OPERATING}
     operating_total = known(sum(int(expenses.get(c, 0)) for c in OPERATING))
-    rent_and_utility_in = int(alloc_sum("rent"))  # 임차인 입금 확정분 (월세 + 공과금 청구에 채운 몫)
-    rent_received = known(rent_and_utility_in - int(utility_paid))
+    tenant_in = int(alloc_sum("rent"))  # 임차인 입금 확정분 (월세 + 관리비 + 공과금 청구에 채운 몫)
+    rent_received = known(tenant_in - int(utility_paid) - int(mgmt_paid))
     return {
         "period": period,
         "charges_ready": charges_ready,
@@ -101,10 +107,12 @@ def monthly(session: Session, organization_id: uuid.UUID, period: str) -> dict:
         "rent_received": rent_received,
         "operating": operating,
         "operating_total": operating_total,
+        "mgmt_charged": int(mgmt_charged) if mgmt_charged else None,  # 관리비를 따로 청구하지 않았으면 비움
+        "mgmt_received": known(mgmt_paid) if mgmt_charged else None,
         "utility_charged": int(utility_charged) if utility_charged else None,  # 공과금 배분 청구가 없으면 비움
         "utility_received": known(utility_paid) if utility_charged else None,
-        # 공과금 입금은 운영비(전기·수도 출금)를 되돌려 받은 돈이라 순운영수익에 함께 넣는다
-        "noi": rent_and_utility_in - operating_total if bank_covered else None,
+        # 관리비·공과금 입금도 임대 운영 수입이라(공과금은 운영비 출금을 되돌려 받은 돈) 순운영수익에 함께 넣는다
+        "noi": tenant_in - operating_total if bank_covered else None,
         "excluded": {
             **{c: known(expenses.get(c, 0)) for c in NON_OPERATING},
             "deposit_in": known(alloc_sum("deposit_in")),

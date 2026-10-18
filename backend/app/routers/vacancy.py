@@ -26,6 +26,8 @@ def _run(fn):
 class ListingIn(BaseModel):
     asking_deposit: int | None = None
     asking_rent: int | None = None
+    asking_mgmt_fee: int | None = None
+    mgmt_includes: str | None = Field(default=None, max_length=200)
     available_on: date | None = None
     note: str | None = Field(default=None, max_length=1000)
 

@@ -118,6 +118,9 @@ def annual(session: Session, organization_id: uuid.UUID, year: int, as_of: date)
         r = reports.monthly(session, organization_id, period)
         months.append({"period": period, "future": False, "bank_covered": r["bank_covered"],
                        "rent_charged": r["rent_charged"], "rent_received": r["rent_received"],
+                       # 관리비·공과금은 월세와 따로 (따로 청구한 달만 값이 있음)
+                       "mgmt_charged": r["mgmt_charged"], "mgmt_received": r["mgmt_received"],
+                       "utility_charged": r["utility_charged"], "utility_received": r["utility_received"],
                        "operating_total": r["operating_total"], "operating": r["operating"],
                        "excluded": {k: r["excluded"][k] for k in NON_OPERATING},
                        "unconfirmed": r["unconfirmed_in"] + r["unconfirmed_out"]})
@@ -146,6 +149,10 @@ def annual(session: Session, organization_id: uuid.UUID, year: int, as_of: date)
         "totals_known_months": {  # 자료 있는 달만 더한 값 — 빈 달을 0 으로 치지 않음
             "rent_charged": int(sum(m["rent_charged"] or 0 for m in past)) if any(m["rent_charged"] is not None for m in past) else None,
             "rent_received": known_sum("rent_received"),
+            "mgmt_charged": _sum_present(past, "mgmt_charged"),
+            "mgmt_received": known_sum("mgmt_received"),
+            "utility_charged": _sum_present(past, "utility_charged"),
+            "utility_received": known_sum("utility_received"),
             "operating_total": known_sum("operating_total"),
             "by_category": {c: int(sum(e["amount"] for e in operating if e["category"] == c)) for c in OPERATING},
         },
@@ -153,6 +160,11 @@ def annual(session: Session, organization_id: uuid.UUID, year: int, as_of: date)
         "deposits_total": int(sum(d["amount"] for d in deposits)),
         "expenses": expenses,
     }
+
+
+def _sum_present(months: list[dict], key: str) -> int | None:
+    vals = [m[key] for m in months if m[key] is not None]
+    return int(sum(vals)) if vals else None
 
 
 def to_xlsx(data: dict) -> bytes:
@@ -174,6 +186,10 @@ def to_xlsx(data: dict) -> bytes:
         ["합계 (자료 있는 달만)", ""],
         ["월세 청구 (납부일 기준)", data["totals_known_months"]["rent_charged"]],
         ["월세 입금 (확정 입금 기준)", data["totals_known_months"]["rent_received"]],
+        ["관리비 청구 (따로 청구한 달)", data["totals_known_months"]["mgmt_charged"]],
+        ["관리비 입금 (확정 입금 기준)", data["totals_known_months"]["mgmt_received"]],
+        ["공과금 청구 (배분)", data["totals_known_months"]["utility_charged"]],
+        ["공과금 입금 (확정 입금 기준)", data["totals_known_months"]["utility_received"]],
         ["운영비", data["totals_known_months"]["operating_total"]],
         *[[f"  {LABELS[c]}", v] for c, v in data["totals_known_months"]["by_category"].items()],
         [f"보증금 잔액 ({data['deposits_at']} 기준, 부채)", data["deposits_total"]],
@@ -186,14 +202,16 @@ def to_xlsx(data: dict) -> bytes:
     ws.column_dimensions["B"].width = 60
 
     wm = wb.create_sheet("월별")
-    wm.append(["월", "은행 내역", "월세 청구", "월세 입금", "운영비", "주인세대", "생활비", "미확정 거래"])
+    wm.append(["월", "은행 내역", "월세 청구", "월세 입금", "관리비 청구", "관리비 입금", "공과금 청구", "공과금 입금",
+               "운영비", "주인세대", "생활비", "미확정 거래"])
     for m in data["months"]:
         if m["future"]:
-            wm.append([m["period"], "아직", None, None, None, None, None, None])
+            wm.append([m["period"], "아직", *[None] * 10])
             continue
         dash = lambda v: "—" if v is None else v  # noqa: E731
         wm.append([m["period"], "있음" if m["bank_covered"] else "없음", dash(m["rent_charged"]), dash(m["rent_received"]),
-                   dash(m["operating_total"]), dash(m["excluded"]["owner_household"]), dash(m["excluded"]["personal"]),
+                   dash(m["mgmt_charged"]), dash(m["mgmt_received"]), dash(m["utility_charged"]),
+                   dash(m["utility_received"]), dash(m["operating_total"]), dash(m["excluded"]["owner_household"]), dash(m["excluded"]["personal"]),
                    m["unconfirmed"]])
 
     we = wb.create_sheet("경비 내역")

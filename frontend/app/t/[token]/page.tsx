@@ -7,7 +7,7 @@ import { api, kst, won } from "@/lib/api";
 
 interface View {
   unit_no: string; building: string;
-  lease: { start_date: string; end_date: string | null; rent: number; due_day: number; deposit: number; deposit_received: number | null };
+  lease: { start_date: string; end_date: string | null; rent: number; mgmt_fee: number | null; due_day: number; deposit: number; deposit_received: number | null };
   next_due: string | null;
   charges: { period: string; due_date: string; amount: number; paid: number; state: string; state_label: string; kind: string; kind_label: string }[];
   bank_data_as_of: string | null;
@@ -67,7 +67,7 @@ function Body({ v, token, reload }: { v: View; token: string; reload: () => Prom
         <div className="card col-span-2 p-4">
           <p className="flex items-center gap-1 text-xs text-slate-500"><CalendarDays className="h-3.5 w-3.5" />다음 납부일</p>
           <p className="text-2xl font-bold">{v.next_due ?? "—"}</p>
-          <p className="text-xs text-slate-500">매월 {l.due_day}일 · 월세 {won(l.rent)}</p>
+          <p className="text-xs text-slate-500">매월 {l.due_day}일 · 월세 {won(l.rent)}{l.mgmt_fee ? ` · 관리비 ${won(l.mgmt_fee)}` : ""}</p>
         </div>
         <div className="card p-3"><p className="text-xs text-slate-500">계약 기간</p>
           <p className="text-sm font-semibold">{l.start_date}<br />~ {l.end_date ?? "—"}</p></div>
@@ -77,7 +77,7 @@ function Body({ v, token, reload }: { v: View; token: string; reload: () => Prom
       </section>
 
       <section className="card p-4">
-        <h2 className="card-title mb-1">월세 · 입금 확인</h2>
+        <h2 className="card-title mb-1">청구 · 입금 확인</h2>
         <p className="mb-2 text-xs text-slate-500">
           {v.bank_data_as_of ? `${kst(v.bank_data_as_of)}까지의 통장 내역으로 확인했습니다.` : "아직 통장 내역이 반영되지 않았습니다."}</p>
         {v.charges.length === 0 ? <p className="text-sm text-slate-500">아직 청구가 없습니다.</p> : (

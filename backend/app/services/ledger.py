@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.models import Charge, Payment, TransactionAllocation
+
+
+# 같은 납부일이면 월세 → 관리비 → 공과금 순으로 채운다
+KIND_ORDER = case((Charge.kind == "rent", 0), (Charge.kind == "mgmt", 1), else_=2)
 
 
 def paid_amount(session: Session, charge_id: uuid.UUID) -> int:
@@ -39,7 +43,7 @@ def open_charges(session: Session, lease_id: uuid.UUID) -> list[tuple[Charge, in
     charges = session.scalars(
         select(Charge)
         .where(Charge.lease_id == lease_id, Charge.status.in_(("open", "partial")))
-        .order_by(Charge.due_date, Charge.period, Charge.kind != "rent")
+        .order_by(Charge.due_date, Charge.period, KIND_ORDER, Charge.kind)
     ).all()
     out = []
     for c in charges:

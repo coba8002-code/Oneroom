@@ -6,7 +6,7 @@ import { api, won } from "@/lib/api";
 
 interface Row { lease_id: string; unit_no: string; tenant_name: string; deposit: number; rent: number; end_date: string | null;
   new_deposit: number; new_rent: number }
-interface Summary { annual_rent: number; deposit_total: number; deposit_income: number | null; annual_net: number | null;
+interface Summary { annual_rent: number; annual_mgmt: number; deposit_total: number; deposit_income: number | null; annual_net: number | null;
   equity: number | null; equity_yield_pct: string | null }
 interface Sim {
   as_of: string; rows: Row[]; current: Summary; scenario: Summary; tax_note: string;
@@ -102,8 +102,8 @@ export default function SimulatePage() {
               <table className="w-full tabular-nums">
                 <thead className="text-xs text-slate-500"><tr><th className="text-left" /><th className="text-right">지금</th><th className="text-right">바꾼 뒤</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {([["연 월세 수입", "annual_rent"], ["보증금 합계 (부채)", "deposit_total"], ["보증금 운용수익", "deposit_income"],
-                    ["연 순수익 (월세+운용−운영비)", "annual_net"], ["자기자본 (건물가치−보증금)", "equity"]] as [string, keyof Summary][]).map(([label, k]) => (
+                  {([["연 월세 수입", "annual_rent"], ["연 관리비 수입 (따로 적은 계약)", "annual_mgmt"], ["보증금 합계 (부채)", "deposit_total"], ["보증금 운용수익", "deposit_income"],
+                    ["연 순수익 (월세+관리비+운용−운영비)", "annual_net"], ["자기자본 (건물가치−보증금)", "equity"]] as [string, keyof Summary][]).map(([label, k]) => (
                     <tr key={k}><td className="py-1.5">{label}</td><td className="text-right">{cell(sim.current[k] as number | null)}</td>
                       <td className={`text-right ${sim.current[k] !== sim.scenario[k] ? "font-semibold text-blue-700" : ""}`}>{cell(sim.scenario[k] as number | null)}</td></tr>))}
                   <tr><td className="py-1.5">자기자본 수익률</td><td className="text-right">{sim.current.equity_yield_pct ? `${sim.current.equity_yield_pct}%` : "—"}</td>

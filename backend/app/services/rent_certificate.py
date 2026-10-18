@@ -60,7 +60,7 @@ def build(session: Session, organization_id: uuid.UUID, lease_id: uuid.UUID, yea
         periods = list(session.scalars(select(Charge.period).join(Payment, Payment.charge_id == Charge.id)
                                        .where(Payment.transaction_allocation_id == alloc.id, Charge.kind == "rent")
                                        .order_by(Charge.period).distinct()))
-        # 같은 입금으로 공과금 청구를 채운 몫은 월세가 아니므로 뺀다
+        # 같은 입금으로 관리비·공과금 청구를 채운 몫은 월세가 아니므로 뺀다
         utility = session.scalar(select(func.coalesce(func.sum(Payment.amount), 0))
                                  .join(Charge, Payment.charge_id == Charge.id)
                                  .where(Payment.transaction_allocation_id == alloc.id, Charge.kind != "rent"))
@@ -86,7 +86,10 @@ def build(session: Session, organization_id: uuid.UUID, lease_id: uuid.UUID, yea
         "tenant_name": tenant.name,
         "unit_no": unit.label, "address": prop.address,
         "lease": {"start_date": lease.start_date, "end_date": lease.end_date, "ended_on": lease.ended_on,
-                  "deposit": lease.deposit, "rent": lease.rent, "due_day": lease.due_day},
+                  "deposit": lease.deposit, "rent": lease.rent, "mgmt_fee": lease.mgmt_fee,
+                  "due_day": lease.due_day},
+        # 관리비를 계약에 따로 적지 않았으면 월세 입금에 관리비가 섞여 있을 수 있다 — 확인서에 그대로 알린다
+        "mgmt_unknown": lease.mgmt_fee is None,
         "lines": lines,
         "total": sum(x["amount"] for x in lines),
         "count": len(lines),

@@ -20,7 +20,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AuditLog, Charge, Deposit, Lease, MaintenanceTicket, Property, TenantLink, Unit
-from app.services import ledger, receivables, tenant_notices, utilities
+from app.services import ledger, receivables, tenant_notices
+from app.services.charges import kind_label
 
 DAYS = (30, 90, 180, 365)  # 관리자가 고르는 유효 기간
 CHARGE_MONTHS = 12
@@ -129,14 +130,14 @@ def view(session: Session, link: TenantLink, lease: Lease, today: date, now: dat
         session.commit()
 
     every = session.scalars(select(Charge).where(Charge.lease_id == lease.id)
-                            .order_by(Charge.period.desc(), Charge.kind != "rent", Charge.kind)).all()
+                            .order_by(Charge.period.desc(), ledger.KIND_ORDER, Charge.kind)).all()
     months = sorted({c.period for c in every}, reverse=True)[:CHARGE_MONTHS]  # 최근 12개월 (월세·공과금 모두)
     charges = [c for c in every if c.period in months]
     rows = []
     for c in charges:
         paid = int(ledger.paid_amount(session, c.id))
         rows.append({"period": c.period, "due_date": c.due_date, "amount": c.amount, "paid": paid,
-                     "kind": c.kind, "kind_label": "월세" if c.kind == "rent" else utilities.ITEMS.get(c.kind, c.kind),
+                     "kind": c.kind, "kind_label": kind_label(c.kind),
                      "state": c.status if c.status in STATE else "open", "state_label": STATE.get(c.status, c.status)})
     upcoming = [c for c in charges if c.due_date >= today and c.status in ("open", "partial")]
 
@@ -146,6 +147,7 @@ def view(session: Session, link: TenantLink, lease: Lease, today: date, now: dat
     return {
         "unit_no": unit.label, "building": prop.name,
         "lease": {"start_date": lease.start_date, "end_date": lease.end_date, "rent": lease.rent,
+                  "mgmt_fee": lease.mgmt_fee,
                   "due_day": lease.due_day, "deposit": lease.deposit,
                   "deposit_received": int(sum(received)) if received else None},
         "next_due": min((c.due_date for c in upcoming), default=None),

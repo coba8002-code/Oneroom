@@ -19,13 +19,13 @@ type UnitRow = { key: number; use_type: UseType } & {
 };
 
 const CSV_HEADER =
-  "호실,층,면적㎡,용도,임차인,연락처,보증금,월세,납부일,계약시작,계약종료,보증금수령일";
+  "호실,층,면적㎡,용도,임차인,연락처,보증금,월세,관리비,납부일,계약시작,계약종료,보증금수령일";
 
 let nextKey = 1;
 function emptyRow(use_type: UseType = "rental"): UnitRow {
   return {
     key: nextKey++, use_type, unit_no: "", floor: "", area_m2: "", tenant_name: "",
-    tenant_phone: "", deposit: "", rent: "", due_day: "", start_date: "", end_date: "",
+    tenant_phone: "", deposit: "", rent: "", mgmt_fee: "", due_day: "", start_date: "", end_date: "",
     deposit_received_on: "",
   };
 }
@@ -48,6 +48,7 @@ function toPayload(r: UnitRow): UnitIn {
     tenant_phone: r.use_type === "owner" ? null : strOrNull(r.tenant_phone),
     deposit: numOrNull(r.deposit),
     rent: numOrNull(r.rent),
+    mgmt_fee: r.use_type === "owner" ? null : numOrNull(r.mgmt_fee),
     due_day: numOrNull(r.due_day),
     start_date: strOrNull(r.start_date),
     end_date: strOrNull(r.end_date),
@@ -60,7 +61,7 @@ function fromPayload(u: UnitIn): UnitRow {
   return {
     key: nextKey++, use_type: u.use_type, unit_no: u.unit_no, floor: s(u.floor),
     area_m2: s(u.area_m2), tenant_name: s(u.tenant_name), tenant_phone: s(u.tenant_phone),
-    deposit: s(u.deposit), rent: s(u.rent), due_day: s(u.due_day), start_date: s(u.start_date),
+    deposit: s(u.deposit), rent: s(u.rent), mgmt_fee: s(u.mgmt_fee), due_day: s(u.due_day), start_date: s(u.start_date),
     end_date: s(u.end_date), deposit_received_on: s(u.deposit_received_on),
   };
 }
@@ -274,7 +275,8 @@ function UnitCard({ row: r, index, onChange, onRemove }: {
         {field("tenant_name", "임차인")}
         {field("tenant_phone", "연락처", { inputMode: "tel", autoComplete: "off" })}
         {field("due_day", "납부일(1~31)", { inputMode: "numeric", placeholder: "매월 n일" })}
-        {field("rent", "월세(관리비 포함)", { inputMode: "numeric" })}
+        {field("rent", "월세", { inputMode: "numeric" })}
+        {field("mgmt_fee", "관리비(모르면 비움)", { inputMode: "numeric" })}
         {field("deposit", "보증금", { inputMode: "numeric" })}
         {field("start_date", "계약시작", { type: "date" })}
         {field("end_date", "계약종료", { type: "date" })}
