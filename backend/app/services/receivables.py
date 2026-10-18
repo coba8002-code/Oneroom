@@ -48,7 +48,7 @@ def compute(session: Session, organization_id: uuid.UUID, as_of: date) -> Receiv
         items.append(ReceivableItem(unit_no=unit_no, tenant_name=name, period=c.period,
                                     due_date=c.due_date, amount=c.amount, paid=paid,
                                     outstanding=c.amount - paid,
-                                    days_past_due=max(0, (as_of - c.due_date).days)))
+                                    days_past_due=max(0, (as_of - c.due_date).days), kind=c.kind))
 
     credits = []
     for li in matching.active_leases(session, organization_id):

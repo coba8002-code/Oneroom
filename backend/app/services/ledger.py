@@ -39,7 +39,7 @@ def open_charges(session: Session, lease_id: uuid.UUID) -> list[tuple[Charge, in
     charges = session.scalars(
         select(Charge)
         .where(Charge.lease_id == lease_id, Charge.status.in_(("open", "partial")))
-        .order_by(Charge.due_date, Charge.period)
+        .order_by(Charge.due_date, Charge.period, Charge.kind != "rent")
     ).all()
     out = []
     for c in charges:

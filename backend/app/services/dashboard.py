@@ -62,7 +62,7 @@ def _due_today(session: Session, leases: dict, units: list, as_of: date) -> list
     unit_no = {u.id: u.label for u in units}
     for lease, name in leases.values():
         for c in session.scalars(select(Charge).where(Charge.lease_id == lease.id, Charge.due_date == as_of,
-                                                      Charge.status != "waived")):
+                                                      Charge.kind == "rent", Charge.status != "waived")):
             paid = ledger.paid_amount(session, c.id)
             last = session.execute(
                 select(Transaction.occurred_at, Transaction.source)
@@ -99,7 +99,8 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
         select(Lease, Tenant.name).join(Tenant, Lease.tenant_id == Tenant.id)
         .where(Lease.unit_id.in_([u.id for u in units]), Lease.status == "active"))}
     charges = {c.lease_id: c for c in session.scalars(select(Charge).where(
-        Charge.period == period, Charge.lease_id.in_([lease.id for lease, _ in leases.values()])))}
+        Charge.period == period, Charge.kind == "rent",
+        Charge.lease_id.in_([lease.id for lease, _ in leases.values()])))}
 
     unit_rows = []
     for u in units:

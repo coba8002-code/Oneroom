@@ -281,13 +281,16 @@ class TransactionAllocation(Base):
 
 class Charge(Base):
     __tablename__ = "charges"
-    __table_args__ = (UniqueConstraint("lease_id", "period", name="uq_charges_lease_period"),)
+    __table_args__ = (UniqueConstraint("lease_id", "period", "kind", name="uq_charges_lease_period_kind"),)
     id: Mapped[uuid.UUID] = pk()
     lease_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leases.id"), index=True)
     period: Mapped[str] = mapped_column(String(7))  # YYYY-MM
     due_date: Mapped[date] = mapped_column(Date)
     amount: Mapped[int] = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(String(20), default="open")  # open | partial | paid | waived
+    # rent: 월세 | electricity·water·gas·internet: 공과금 배분 청구 (utility_bill_id 로 고지서와 이어짐)
+    kind: Mapped[str] = mapped_column(String(20), default="rent", server_default="rent")
+    utility_bill_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("utility_bills.id"), index=True)
     created_at: Mapped[datetime] = created_at()
 
 
@@ -648,6 +651,44 @@ class TenantLink(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at()
+
+
+class UtilitySetting(Base):
+    """건물·공과금 항목별 처리 방식 (관리자가 고른 값만 — 기본값으로 청구하지 않는다).
+    mode: included(월세·관리비에 포함, 따로 청구 안 함) | split(나눠 청구) | direct(임차인이 직접 납부)
+    method(split 일 때): equal(호실 수로 똑같이) | area(전용면적 비율) | manual(호실별 금액 직접 입력)
+    vacant·owner(equal·area 일 때): landlord(공실·주인세대 몫도 나눈 뒤 집주인이 부담) | exclude(빼고 나눔)"""
+    __tablename__ = "utility_settings"
+    __table_args__ = (UniqueConstraint("property_id", "item", name="uq_utility_settings_item"),)
+    id: Mapped[uuid.UUID] = pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id"), index=True)
+    item: Mapped[str] = mapped_column(String(20))  # electricity | water | gas | internet
+    mode: Mapped[str] = mapped_column(String(20))
+    method: Mapped[str | None] = mapped_column(String(20))
+    vacant: Mapped[str | None] = mapped_column(String(20))
+    owner: Mapped[str | None] = mapped_column(String(20))
+    updated_at: Mapped[datetime] = created_at()
+
+
+class UtilityBill(Base):
+    """한 건물·한 항목·한 청구 월의 고지서 금액. 청구하면 계약별 Charge(kind=항목)가 생긴다.
+    split_json 은 청구할 때의 나눈 결과 스냅숏 (방식·호실별 몫·집주인 부담분)."""
+    __tablename__ = "utility_bills"
+    __table_args__ = (
+        UniqueConstraint("property_id", "item", "period", name="uq_utility_bills_period"),
+        CheckConstraint("total > 0", name="ck_utility_bills_total"),
+    )
+    id: Mapped[uuid.UUID] = pk()
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id"), index=True)
+    item: Mapped[str] = mapped_column(String(20))
+    period: Mapped[str] = mapped_column(String(7))  # 청구 월 (월세와 같은 납부일에 함께 청구)
+    total: Mapped[int] = mapped_column(BigInteger)
+    note: Mapped[str | None] = mapped_column(String(200))  # 예: 사용 기간 9/1~9/30
+    manual: Mapped[dict | None] = mapped_column(JSON)  # 직접 입력 방식의 호실별 금액 {unit_id: 원}
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | charged
+    split_json: Mapped[dict | None] = mapped_column(JSON)
+    charged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
 
 

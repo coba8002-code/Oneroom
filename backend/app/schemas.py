@@ -91,6 +91,7 @@ class ChargeOut(BaseModel):
     due_date: date
     amount: int
     status: str
+    kind: str = "rent"  # rent | electricity | water | gas | internet (공과금 배분 청구)
 
 
 class GenerateChargesOut(BaseModel):
@@ -183,6 +184,7 @@ class ReceivableItem(BaseModel):
     paid: int
     outstanding: int
     days_past_due: int
+    kind: str = "rent"
 
 
 class CreditItem(BaseModel):
@@ -268,7 +270,9 @@ class MonthlyReportOut(BaseModel):
     charges_ready: bool  # 그 달 청구를 만들었는가
     bank_covered: bool  # 은행 내역이 그 달 1일 이후까지 있는가
     rent_charged: int | None
-    rent_received: int | None
+    rent_received: int | None  # 월세 몫만 (같은 입금으로 채운 공과금 청구는 아래로)
+    utility_charged: int | None = None  # 공과금 배분 청구 합 (없으면 비움)
+    utility_received: int | None = None
     operating: dict[str, int | None]
     operating_total: int | None
     noi: int | None

@@ -82,7 +82,7 @@ def _charges(session: Session, organization_id: uuid.UUID):
     return (select(Charge, Lease, Unit.label, Tenant)
             .join(Lease, Charge.lease_id == Lease.id).join(Unit, Lease.unit_id == Unit.id)
             .join(Property, Unit.property_id == Property.id).join(Tenant, Lease.tenant_id == Tenant.id)
-            .where(Property.organization_id == organization_id))
+            .where(Property.organization_id == organization_id, Charge.kind == "rent"))  # 월세 문구용 — 공과금 청구 제외
 
 
 def _ctx(session: Session, charge: Charge, unit_no: str, tenant: Tenant, as_of: date | None = None) -> dict[str, str]:

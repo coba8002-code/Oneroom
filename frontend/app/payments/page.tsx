@@ -8,6 +8,7 @@ import {
   type ImportOut,
   type Category,
   CATEGORY_LABEL,
+  kindTag,
   kst,
   type LeaseOut,
   type Organization,
@@ -280,9 +281,9 @@ function ReceivablesView({ recv, asOf, onAsOf }: {
             </thead>
             <tbody>
               {recv.items.map((i) => (
-                <tr key={`${i.unit_no}-${i.period}`} className="border-t">
+                <tr key={`${i.unit_no}-${i.period}-${i.kind ?? "rent"}`} className="border-t">
                   <td className="p-2">{i.unit_no} <span className="text-slate-500">{i.tenant_name}</span></td>
-                  <td className="p-2">{i.period}</td>
+                  <td className="p-2">{i.period}{kindTag(i.kind)}</td>
                   <td className="p-2 tabular-nums">{i.due_date}</td>
                   <td className="p-2 text-right tabular-nums">{won(i.paid)}</td>
                   <td className="p-2 text-right font-medium tabular-nums">{won(i.outstanding)}</td>

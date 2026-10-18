@@ -2,7 +2,7 @@
 
 import { Download, Printer } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, apiFetch, kst, todayKst, won } from "@/lib/api";
+import { api, apiFetch, kindTag, kst, todayKst, won } from "@/lib/api";
 
 interface Report {
   period: string; as_of: string; month_closed: boolean; generated_at: string; notice: string;
@@ -12,7 +12,7 @@ interface Report {
   money: { rent_charged: number | null; rent_received: number | null; operating: Record<string, number | null>;
     operating_total: number | null; noi: number | null; excluded: Record<string, number | null>;
     deposit_in: number | null; deposit_out: number | null };
-  charges: { unit_no: string; due_date: string; amount: number; paid: number; status: string }[];
+  charges: { unit_no: string; due_date: string; amount: number; paid: number; status: string; kind?: string }[];
   overdue: { total: number; items: { unit_no: string; period: string; due_date: string; outstanding: number; days_past_due: number }[] };
   deposits_liability: number;
   vacancies: { unit_no: string; vacant_since: string | null; days_vacant: number | null; missed_rent: number | null; asking_rent: number | null }[];
@@ -119,7 +119,7 @@ function ReportBody({ r }: { r: Report }) {
             <table className="w-full tabular-nums"><thead className="text-xs text-slate-500"><tr className="text-right">
               <th className="text-left">호실</th><th>납부일</th><th>청구</th><th>입금</th><th>상태</th></tr></thead>
               <tbody className="divide-y divide-slate-100">{r.charges.map((c) => (
-                <tr key={c.unit_no + c.due_date} className="text-right"><td className="py-1 text-left">{c.unit_no}호</td><td>{c.due_date.slice(5)}</td>
+                <tr key={c.unit_no + c.due_date + (c.kind ?? "")} className="text-right"><td className="py-1 text-left">{c.unit_no}호{kindTag(c.kind)}</td><td>{c.due_date.slice(5)}</td>
                   <td>{won(c.amount)}</td><td>{won(c.paid)}</td><td>{STATUS[c.status] ?? c.status}</td></tr>))}</tbody></table>
           )}
         </Section>

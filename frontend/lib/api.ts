@@ -227,9 +227,14 @@ export interface Receivables {
     paid: number;
     outstanding: number;
     days_past_due: number;
+    kind?: string;
   }[];
   credits: { unit_no: string; credit: number }[];
 }
+
+/** 청구 종류 — 월세 외에는 공과금 배분 청구 */
+export const CHARGE_KIND: Record<string, string> = { rent: "월세", electricity: "전기", water: "수도", gas: "가스", internet: "인터넷" };
+export const kindTag = (kind?: string) => (kind && kind !== "rent" ? ` · ${CHARGE_KIND[kind] ?? kind}` : "");
 
 /** 저장은 UTC, 표시는 KST */
 export const kst = (iso: string | null) =>

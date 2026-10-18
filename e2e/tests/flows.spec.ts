@@ -94,7 +94,7 @@ test("AI 비서: 키가 없으면 '연결 안 됨' 안내만, 질문 칸은 잠�
 test("휴대폰 폭(390px)에서 주요 화면이 가로로 넘치지 않음", async ({ page }) => {
   await signupAndOnboard(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ["/", "/payments", "/expenses", "/units", "/assets", "/vacancy", "/move-out", "/tax", "/reports", "/settings", "/assistant", "/certificate", "/tenant-notices"]) {
+  for (const path of ["/", "/payments", "/expenses", "/units", "/assets", "/vacancy", "/move-out", "/tax", "/reports", "/settings", "/assistant", "/certificate", "/tenant-notices", "/utilities"]) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     await noOverflow(page);
@@ -285,4 +285,35 @@ test("홈 화면 앱(PWA): 설치 정보 · 연결이 끊기면 안내 화면 ·
     return urls;
   });
   expect(cached.sort()).toEqual(["/icons/icon-192.png", "/offline.html"]);  // API·화면 HTML 없음
+});
+
+test("공과금: 항목별 처리 방식 → 수도 고지서 → 나눈 결과 → 청구 → 임차인 화면", async ({ page }) => {
+  const org = await signupAndOnboard(page);
+  await page.goto("/utilities");
+  const water = page.locator("[data-item=water]");
+  await water.getByLabel("수도 처리 방식").selectOption({ label: "나눠서 청구" });
+  await water.getByLabel("수도 나누는 방법").selectOption({ label: "호실 수로 똑같이" });
+  await water.getByLabel("수도 공실 몫").selectOption({ label: "몫을 나눈 뒤 집주인이 부담" });
+  await water.getByLabel("수도 주인세대 몫").selectOption({ label: "빼고 나눔" });
+  await water.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText("수도 처리 방식을 저장했습니다.")).toBeVisible();
+  const elec = page.locator("[data-item=electricity]");
+  await elec.getByLabel("전기 처리 방식").selectOption({ label: "월세·관리비에 포함 (따로 청구 안 함)" });
+  await elec.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText("전기 처리 방식을 저장했습니다.")).toBeVisible();
+
+  await page.getByLabel("청구 월").fill("2026-11");
+  await page.getByLabel("고지서 금액 (원)").fill("90000");
+  await page.getByRole("button", { name: "고지서 넣기" }).click();
+  const bill = page.locator("[data-bill=water]");
+  await expect(bill.locator("tr").filter({ hasText: "101호" })).toContainText("10,000원");
+  await expect(bill.locator("tr").filter({ hasText: "203호" })).toContainText("집주인 부담");  // 공실 몫
+  await expect(bill.getByText(/임차인 청구 합 80,000원 · 집주인 부담 10,000원/)).toBeVisible();
+  await bill.getByRole("button", { name: "청구하기" }).click();
+  await expect(bill.getByText("청구함")).toBeVisible();
+
+  const lease = (await api(page, "GET", `/api/v1/leases?organization_id=${org}`)).find((x: { unit_no: string }) => x.unit_no === "101");
+  const { path } = await api(page, "POST", `/api/v1/leases/${lease.lease_id}/tenant-link`, { days: 90 });
+  await page.goto(path);
+  await expect(page.getByText("2026-11 수도")).toBeVisible();
 });

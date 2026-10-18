@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AuditLog, Charge, Deposit, Lease, MaintenanceTicket, Property, TenantLink, Unit
-from app.services import ledger, receivables, tenant_notices
+from app.services import ledger, receivables, tenant_notices, utilities
 
 DAYS = (30, 90, 180, 365)  # 관리자가 고르는 유효 기간
 CHARGE_MONTHS = 12
@@ -128,12 +128,15 @@ def view(session: Session, link: TenantLink, lease: Lease, today: date, now: dat
         link.last_seen_at = now
         session.commit()
 
-    charges = session.scalars(select(Charge).where(Charge.lease_id == lease.id)
-                              .order_by(Charge.period.desc()).limit(CHARGE_MONTHS)).all()
+    every = session.scalars(select(Charge).where(Charge.lease_id == lease.id)
+                            .order_by(Charge.period.desc(), Charge.kind != "rent", Charge.kind)).all()
+    months = sorted({c.period for c in every}, reverse=True)[:CHARGE_MONTHS]  # 최근 12개월 (월세·공과금 모두)
+    charges = [c for c in every if c.period in months]
     rows = []
     for c in charges:
         paid = int(ledger.paid_amount(session, c.id))
         rows.append({"period": c.period, "due_date": c.due_date, "amount": c.amount, "paid": paid,
+                     "kind": c.kind, "kind_label": "월세" if c.kind == "rent" else utilities.ITEMS.get(c.kind, c.kind),
                      "state": c.status if c.status in STATE else "open", "state_label": STATE.get(c.status, c.status)})
     upcoming = [c for c in charges if c.due_date >= today and c.status in ("open", "partial")]
 
