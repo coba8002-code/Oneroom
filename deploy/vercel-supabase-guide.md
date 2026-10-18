@@ -74,7 +74,7 @@ console.log("ROOMAX_BACKUP_PASSPHRASE=" + hex(16)); console.log("CRON_SECRET=" +
    - Name: `ROOMAX_DATABASE_URL`
    - Secret: 2-5 의 **Session pooler(5432)** 주소
 2. **Actions** 탭 → 왼쪽 **DB migrate (Supabase)** → **Run workflow** → Run
-3. 1분 뒤 초록 체크 ✅ — 로그 끝에 가장 최근 버전(예: `0016 (head)`)이 보이면 끝
+3. 1분 뒤 초록 체크 ✅ — 로그 끝에 가장 최근 버전(지금은 `0019 (head)`)이 보이면 끝
 
 이후에는 마이그레이션이 main 에 들어올 때마다 자동으로 돕니다. (로그에는 버전 이름만 나오고 주소·비밀번호는 나오지 않습니다)
 
