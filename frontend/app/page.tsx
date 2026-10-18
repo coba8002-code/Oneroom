@@ -70,6 +70,14 @@ function dateNote(u: DashUnit, s: Status): string {
   return "";
 }
 
+// 계약자 · 납부일(매월 N일) · 이번 달 입금일(데스크톱 카드는 아래 dateNote 가 보여 줌) — 모르면 —
+function leaseLine(u: DashUnit, s: Status, withPaid = true): string {
+  if (u.status !== "occupied") return "";
+  const parts = [u.tenant_name ?? "계약자 —", u.due_day != null ? `매월 ${u.due_day}일` : "납부일 —"];
+  if (withPaid && s === "paid" && u.paid_on) parts.push(`입금 ${mmdd(u.paid_on)}`);
+  return parts.join(" · ");
+}
+
 function greeting(): string {
   const h = Number(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul", hour: "numeric", hour12: false }));
   if (h >= 5 && h < 11) return "좋은 아침입니다!";
@@ -326,6 +334,7 @@ function UnitsCard({ d }: { d: Dashboard }) {
               <div className="mt-0.5 text-[13px] text-slate-700">
                 {u.status === "occupied" ? manwon(u.rent) + (u.mgmt_fee ? ` +관리 ${manwon(u.mgmt_fee)}` : "") : u.floor != null ? `${u.floor}층` : "—"}
               </div>
+              <div className="mt-0.5 truncate text-xs text-slate-500">{leaseLine(u, s, false)}</div>
               <div className={`mt-2 flex items-center gap-1.5 text-[13px] font-semibold ${st.text}`}>
                 <span className={`h-2.5 w-2.5 rounded-full ${st.dot}`} />{st.label}
               </div>
@@ -345,7 +354,10 @@ function UnitsCard({ d }: { d: Dashboard }) {
               <a href="/payments" className="flex items-center gap-3 py-2.5">
                 <span className={`h-2.5 w-2.5 rounded-full ${st.dot}`} />
                 <span className="w-14 font-bold">{u.unit_no}호</span>
-                <span className="flex-1 text-sm text-slate-600">{u.status === "occupied" ? manwon(u.rent) + (u.mgmt_fee ? ` +관리 ${manwon(u.mgmt_fee)}` : "") : ""}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm text-slate-600">{u.status === "occupied" ? manwon(u.rent) + (u.mgmt_fee ? ` +관리 ${manwon(u.mgmt_fee)}` : "") : ""}</span>
+                  {u.status === "occupied" && <span className="block truncate text-xs text-slate-500">{leaseLine(u, s)}</span>}
+                </span>
                 <span className={`chip ${st.card} ${st.text} border`}>{st.label}</span>
                 <ChevronRight className="h-4 w-4 text-slate-400" />
               </a>
