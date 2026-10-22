@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "17" }
-      - uses: android-actions/setup-android@v3
+      # 러너에 안드로이드 SDK 가 이미 있음 (ANDROID_HOME) — 빠진 플랫폼은 빌드가 받아 옴
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: "8.11.1" }
       - run: gradle --no-daemon assembleDebug
