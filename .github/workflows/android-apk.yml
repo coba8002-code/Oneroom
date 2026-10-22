@@ -10,7 +10,7 @@ on:
     paths: ["android/**", ".github/workflows/android-apk.yml"]
 
 permissions:
-  contents: read
+  contents: write  # 'Run workflow' 로 만든 서명 APK 를 Release 에 올리기 위해 (아래 마지막 단계)
 
 jobs:
   apk:
@@ -54,3 +54,14 @@ jobs:
           name: roomax-apk-unsigned
           path: android/app/build/outputs/apk/release/app-release-unsigned.apk
           retention-days: 7
+      # 'Run workflow' 로 만든 서명 APK 는 Release 에도 올림 — 로그인 없이 휴대폰에서 바로 받는 주소:
+      # https://github.com/<저장소>/releases/latest/download/ROOMAX.apk (공개 코드로 만든 파일, 비밀값 없음)
+      - name: Release 에 올리기
+        if: steps.key.outputs.signed == 'true' && github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk ROOMAX.apk
+          tag="apk-${{ github.run_number }}"
+          gh release create "$tag" ROOMAX.apk --target "${{ github.sha }}" --latest \
+            --title "ROOMAX 안드로이드 앱 ($tag)" --notes "휴대폰에서 ROOMAX.apk 를 눌러 받아 설치하세요 (안드로이드 6.0 이상, 크롬 필요)."

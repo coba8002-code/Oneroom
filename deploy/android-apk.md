@@ -23,6 +23,9 @@ GitHub 저장소 → Settings → Secrets and variables → Actions → New repo
 
 GitHub → Actions → **Android APK** → Run workflow → 끝나면 실행 화면 아래 Artifacts 의 `roomax-apk` 를 내려받아 압축을 풉니다.
 
+'Run workflow' 로 만든 것은 Release 에도 올라갑니다 — 휴대폰 브라우저에서 로그인 없이 바로 받는 주소:
+<https://github.com/coba8002-code/Oneroom/releases/latest/download/ROOMAX.apk>
+
 ## 3. 휴대폰에 설치
 
 1. `app-release.apk` 를 휴대폰으로 옮겨 엽니다 (카카오톡 '나에게 보내기'·구글 드라이브 등).
