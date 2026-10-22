@@ -12,7 +12,7 @@ from app.services.bank_import import import_transactions
 router = APIRouter(prefix="/api/v1/bank-accounts", tags=["bank"])
 
 MAX_UPLOAD = 10_000_000
-ALLOWED = (".csv", ".xlsx", ".xlsm")
+ALLOWED = (".csv", ".xlsx", ".xlsm", ".xls")
 
 
 @router.post("/{account_id}/import", response_model=ImportOut)
@@ -25,7 +25,7 @@ async def import_file(
         raise HTTPException(404, "계좌를 찾을 수 없습니다")
     name = file.filename or ""
     if not name.lower().endswith(ALLOWED):
-        raise HTTPException(415, "CSV 또는 XLSX 파일만 가져올 수 있습니다")
+        raise HTTPException(415, "CSV·XLSX·XLS 파일만 가져올 수 있습니다")
     raw = await file.read(MAX_UPLOAD + 1)
     if len(raw) > MAX_UPLOAD:
         raise HTTPException(413, "파일이 너무 큽니다 (10MB 이하)")

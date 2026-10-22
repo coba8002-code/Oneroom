@@ -318,7 +318,7 @@ function BankImport({ orgId, busy, onFile }: {
   return (
     <section className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-sm">
       <span className="mr-auto text-slate-600">
-        은행 거래내역 가져오기 <span className="text-xs text-slate-500">(CSV·XLSX, 같은 파일을 다시 올려도 중복 없음)</span>
+        은행 거래내역 가져오기 <span className="text-xs text-slate-500">(CSV·XLSX·XLS, 같은 파일을 다시 올려도 중복 없음)</span>
       </span>
       {accounts.length > 1 && (
         <select className={select} aria-label="은행 계좌" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
@@ -327,7 +327,7 @@ function BankImport({ orgId, busy, onFile }: {
       )}
       <label className={`${btn} cursor-pointer border bg-white hover:bg-slate-50 ${busy ? "pointer-events-none opacity-50" : ""}`}>
         파일 선택
-        <input type="file" accept=".csv,.xlsx" className="hidden" disabled={busy}
+        <input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={busy}
           onChange={(e) => { const f = e.target.files?.[0]; if (f && accountId) onFile(accountId, f); e.target.value = ""; }} />
       </label>
     </section>
