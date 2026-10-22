@@ -42,6 +42,9 @@ jobs:
           ROOMAX_ALERTS_KEYSTORE: ${{ steps.key.outputs.signed == 'true' && format('{0}/roomax-alerts.p12', runner.temp) || '' }}
           ROOMAX_ALERTS_KEYSTORE_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.ANDROID_ALERTS_KEYSTORE_PASSWORD || '' }}
         run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease
+      - name: Verify alerts package identity
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "package: name='kr.roomax.alerts'"
       - name: Remove signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/roomax-alerts.p12"

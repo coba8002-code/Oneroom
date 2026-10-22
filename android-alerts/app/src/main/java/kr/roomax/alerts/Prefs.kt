@@ -19,6 +19,7 @@ object Prefs {
             check(p.edit().putString("hook_secret", SecretStore.encrypt(old))
                 .remove("hook_url").remove("pending").commit())
         }
+        if (p.contains("pending")) check(p.edit().remove("pending").commit())
         return p.getString("hook_secret", null)?.let { SecretStore.decrypt(it) }.orEmpty()
     }
 

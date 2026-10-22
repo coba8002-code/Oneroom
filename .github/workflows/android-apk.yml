@@ -39,10 +39,17 @@ jobs:
       - name: APK 만들기
         env:
           ROOMAX_KEYSTORE: ${{ steps.key.outputs.signed == 'true' && format('{0}/roomax-release.p12', runner.temp) || '' }}
-          ROOMAX_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ROOMAX_KEYSTORE_PASSWORD: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
         run: |
           [ -n "$ROOMAX_KEYSTORE" ] || unset ROOMAX_KEYSTORE ROOMAX_KEYSTORE_PASSWORD
           gradle --no-daemon :app:lintRelease :app:assembleRelease
+      - name: Verify TWA package and permissions
+        run: |
+          apk=app/build/outputs/apk/release/app-release.apk
+          [ -f "$apk" ] || apk=app/build/outputs/apk/release/app-release-unsigned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.roomax.app'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$apk" > "$RUNNER_TEMP/twa-permissions.txt"
+          if grep -q 'android.permission.RECEIVE_SMS' "$RUNNER_TEMP/twa-permissions.txt"; then exit 1; fi
       - name: 키 파일 지우기
         if: always()
         run: rm -f "$RUNNER_TEMP/roomax-release.p12"

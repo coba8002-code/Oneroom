@@ -3,6 +3,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
     <!-- 알림을 보낼 앱을 고르는 목록 (설치된 앱 이름만 본다) -->
     <queries>
