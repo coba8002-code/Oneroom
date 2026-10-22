@@ -22,7 +22,7 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: "8.14.3" }
-      # 서명 키가 없으면(다른 사람의 PR 등) 빌드만 확인하고 서명 안 된 APK 는 올리지 않음
+      # 서명 키가 없으면(다른 사람의 PR 등) 서명 안 된 APK 만 올림
       - name: 서명 키 준비
         id: key
         env:
@@ -47,3 +47,10 @@ jobs:
           name: roomax-apk
           path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
+      # 키가 없으면 서명 안 된 APK 를 올림 — 키를 가진 사람이 자기 PC 에서 서명할 수 있게 (deploy/android-apk.md)
+      - uses: actions/upload-artifact@v4
+        if: steps.key.outputs.signed != 'true'
+        with:
+          name: roomax-apk-unsigned
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 7
