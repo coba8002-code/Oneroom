@@ -93,3 +93,47 @@ def test_missing_header_and_wrong_type(client, onboarded):
     res = _upload(client, onboarded["bank_account_id"], "n.csv", "a,b\n1,2\n".encode()).json()
     assert res["inserted"] == 0 and "헤더" in res["errors"][0]["message"]
     assert _upload(client, onboarded["bank_account_id"], "n.pdf", b"%PDF").status_code == 415
+
+
+WOORI_HEAD = ["거래일시", "적요", "기재내용", "지급금액(원)", "입금금액(원)", "잔액(원)", "취급점"]
+WOORI_ROWS = [["2026.11.01 09:12:33", "타행이체", "임차인A", "0원", "450,000원", "1,450,000원", "우리은행"],
+              ["2026.11.02 10:00:00", "모바일", "한국전력", "38,000원", "0원", "1,412,000원", "우리은행"]]
+
+
+def test_woori_html_xls_maps_payer_and_auto_confirms(client, onboarded, session):
+    """우리은행 계좌거래내역(이름만 .xls 인 HTML 표): '기재내용' = 입금자 → 월세 자동 확정"""
+    org = onboarded["organization_id"]
+    client.post("/api/v1/charges/generate", params={"organization_id": org, "period": "2026-11"})
+    tr = lambda cells: "<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>"  # noqa: E731
+    html = ("<html><body><p>우리은행 계좌거래내역 조회</p><table>"
+            + tr(["조회기간", "2026.11.01 ~ 2026.11.30"])
+            + "<tr>" + "".join(f"<th>{h}</th>" for h in WOORI_HEAD) + "</tr>"
+            + "".join(tr(r) for r in WOORI_ROWS) + "</table></body></html>")
+    res = _upload(client, onboarded["bank_account_id"], "woori.xls", html.encode("cp949")).json()
+    assert (res["inserted"], res["errors"]) == (2, []), res
+    txs = {t.direction: t for t in session.scalars(select(Transaction))}
+    assert (txs["in"].counterparty, txs["in"].description, txs["in"].amount) == ("임차인A", "타행이체", 450000)
+    assert (txs["out"].amount, txs["out"].balance_after) == (38000, 1412000)
+    client.post("/api/v1/matching/run", params={"organization_id": org})
+    charges = client.get("/api/v1/charges", params={"organization_id": org, "period": "2026-11"}).json()
+    assert next(c for c in charges if c["unit_no"] == "101")["status"] == "paid"
+
+
+def test_real_xls_biff(client, onboarded, session, monkeypatch):
+    """진짜 옛 엑셀(.xls BIFF)은 xlrd 로 읽는다 — 파일 생성 도구가 없어 읽기 결과를 대신 넣어 확인"""
+    import xlrd
+
+    from app.services import bank_import
+
+    class Book:
+        datemode = 0
+
+        def sheet_by_index(self, _):
+            rows = [WOORI_HEAD, *WOORI_ROWS]
+            cell = lambda v: type("C", (), {"value": v, "ctype": xlrd.XL_CELL_TEXT})  # noqa: E731
+            return type("S", (), {"nrows": len(rows), "row": lambda self, i: [cell(v) for v in rows[i]]})()
+
+    monkeypatch.setattr(xlrd, "open_workbook", lambda file_contents: Book())
+    table = bank_import.read_table("w.xls", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 8)
+    parsed, errors, total = bank_import.parse_rows(table)
+    assert (total, errors, parsed[0][1].counterparty) == (2, [], "임차인A")

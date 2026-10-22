@@ -41,7 +41,7 @@ npm run dev                     # http://localhost:3000/onboarding
 | 온보딩 CSV 업로드 → 화면에서 검수 후 등록 (업로드만으로는 저장 안 됨) | `POST /api/v1/onboarding/csv-preview` · 샘플 `samples/onboarding_units.csv` |
 | 월 청구 생성 (호실별 납부일, 말일 보정, 재실행해도 중복 없음) | `POST /api/v1/charges/generate?organization_id=…&period=2026-11` |
 | 월 청구 조회 | `GET /api/v1/charges?organization_id=…&period=2026-11` |
-| 은행 거래 CSV/XLSX 가져오기 (재업로드 중복 없음) | `POST /api/v1/bank-accounts/{id}/import` · 샘플 `samples/bank_transactions_sample.csv` |
+| 은행 거래 CSV/XLSX/XLS 가져오기 (재업로드 중복 없음, 우리은행 계좌거래내역 형식 확인) | `POST /api/v1/bank-accounts/{id}/import` · 샘플 `samples/bank_transactions_sample.csv` |
 | 휴대폰 입금 알림 실시간 연결 (계좌별 비밀 주소, 알림으로 먼저 넣고 내역 파일이 오면 합침) | `POST /api/v1/bank-alerts/hook/{token}` · 설정 → 입금 알림 자동 연결 |
 | 전체 데이터 모델 마이그레이션 (PRD §5, 19개 테이블 + 입금자 별칭) | `backend/alembic/versions/` |
 | 입금 매칭 실행 (확실한 것만 자동 확정, 나머지 검토 대기) | `POST /api/v1/matching/run` · `/payments` 화면 |

@@ -9,14 +9,19 @@
   같은 날)에 있으면 새로 넣지 않고 그 거래를 내역 값으로 고쳐 합친다 — 이미 한 확정·배분은 그대로 남는다.
 
 은행별 열 이름은 실물 파일 확인 후 COLUMN_ALIASES 에 추가한다.
+- 우리은행 '계좌거래내역 조회'(2026-10 실물 확인): 거래일시 · 적요(거래 방식) · 기재내용(보낸/받는 사람) ·
+  지급금액 · 입금금액 · 잔액 · 취급점. 열 이름 끝의 '(원)'·공백은 무시한다.
+- 파일: CSV · XLSX · XLS(옛 엑셀, 은행이 HTML 표를 .xls 로 주는 경우 포함).
 """
 from __future__ import annotations
 
 import csv
 import hashlib
 import io
+import re
 import uuid
 from collections import Counter
+from html.parser import HTMLParser
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -35,9 +40,10 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "occurred_at": ("거래일시", "거래일자", "거래일", "일시", "date"),
     "time": ("거래시간", "시간", "time"),
     "amount_in": ("입금", "입금액", "맡기신금액", "입금금액", "deposit"),
-    "amount_out": ("출금", "출금액", "찾으신금액", "출금금액", "withdrawal"),
-    "description": ("내용", "적요", "거래내용", "기재내용", "description"),
-    "counterparty": ("입금자", "보낸분/받는분", "의뢰인", "상대방", "counterparty"),
+    "amount_out": ("출금", "출금액", "찾으신금액", "출금금액", "지급", "지급금액", "withdrawal"),
+    "description": ("내용", "적요", "거래내용", "description"),
+    # 우리은행은 '기재내용'에 입금자 이름이 들어간다 — 입금자명으로 계약을 찾으려면 상대방이어야 한다
+    "counterparty": ("입금자", "보낸분/받는분", "의뢰인", "상대방", "기재내용", "counterparty"),
     "balance": ("잔액", "거래후잔액", "balance"),
     "bank_ref": ("거래고유번호", "거래번호", "bank_ref"),
 }
@@ -61,19 +67,64 @@ class ParsedRow:
     bank_ref: str | None
 
 
+class _HtmlTable(HTMLParser):
+    """은행이 .xls 이름으로 주는 HTML 표 → 행 목록 (tr/td/th 만 본다)."""
+
+    def __init__(self):
+        super().__init__()
+        self.rows: list[list[str]] = []
+        self._row: list[str] | None = None
+        self._cell: list[str] | None = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "tr":
+            self._row = []
+        elif tag in ("td", "th") and self._row is not None:
+            self._cell = []
+
+    def handle_endtag(self, tag):
+        if tag in ("td", "th") and self._row is not None and self._cell is not None:
+            self._row.append(" ".join("".join(self._cell).split()))
+            self._cell = None
+        elif tag == "tr" and self._row is not None:
+            self.rows.append(self._row)
+            self._row = None
+
+    def handle_data(self, data):
+        if self._cell is not None:
+            self._cell.append(data)
+
+
 def read_table(filename: str, raw: bytes) -> list[list]:
-    if filename.lower().endswith((".xlsx", ".xlsm")):
+    name = filename.lower()
+    if name.endswith((".xlsx", ".xlsm")):
         from openpyxl import load_workbook
 
         ws = load_workbook(io.BytesIO(raw), read_only=True, data_only=True).worksheets[0]
         return [list(r) for r in ws.iter_rows(values_only=True)]
+    if name.endswith(".xls"):
+        if raw[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":  # 진짜 옛 엑셀(BIFF)
+            import xlrd
+
+            book = xlrd.open_workbook(file_contents=raw)
+            sh = book.sheet_by_index(0)
+            return [[xlrd.xldate_as_datetime(c.value, book.datemode) if c.ctype == xlrd.XL_CELL_DATE else c.value
+                     for c in sh.row(i)] for i in range(sh.nrows)]
+        parser = _HtmlTable()  # 이름만 .xls 인 HTML 표
+        parser.feed(decode_text(raw))
+        return parser.rows
     return list(csv.reader(io.StringIO(decode_text(raw))))
+
+
+def _norm_header(cell) -> str:
+    """'입금금액(원)', '거래후 잔액' → '입금금액', '거래후잔액'"""
+    return re.sub(r"\((원|KRW)\)$", "", re.sub(r"\s+", "", str(cell))) if cell is not None else ""
 
 
 def _find_header(table: list[list]) -> tuple[int, dict[str, int]] | None:
     """은행 파일은 위쪽에 계좌정보 몇 줄이 붙는 경우가 많다 → 앞 20행에서 헤더를 찾는다."""
     for idx, row in enumerate(table[:20]):
-        cells = [str(c).strip() if c is not None else "" for c in row]
+        cells = [_norm_header(c) for c in row]
         mapping: dict[str, int] = {}
         for key, aliases in COLUMN_ALIASES.items():
             for i, cell in enumerate(cells):
