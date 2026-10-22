@@ -47,3 +47,21 @@ def test_duplicate_unit_no_rejected(client):
         "property": {"name": "x"}, "units": [{"unit_no": "101"}, {"unit_no": "101"}],
     })
     assert res.status_code == 422
+
+
+def test_future_deposit_received_date_rejected(client):
+    # 보증금 받은 날은 '들어온 증거' — 아직 오지 않은 날로 받았다고 적을 수 없다 (받기 전이면 비움)
+    from datetime import timedelta
+
+    from app.schemas import today_kst
+    future = (today_kst() + timedelta(days=1)).isoformat()
+    raw = (f"호실,용도,임차인,보증금,월세,납부일,계약시작,보증금수령일\n"
+           f"101,임대,홍길동,1000000,450000,1,2026-01-01,{future}\n").encode()
+    res = client.post("/api/v1/onboarding/csv-preview", files={"file": ("u.csv", raw, "text/csv")}).json()
+    assert res["units"] == [] and "보증금 받은 날" in res["errors"][0]["message"]
+    unit = {"unit_no": "101", "tenant_name": "홍길동", "deposit": 1000000, "rent": 450000, "due_day": 1,
+            "start_date": "2026-01-01", "deposit_received_on": future}
+    assert client.post("/api/v1/onboarding", json={"property": {"name": "x"}, "units": [unit]}).status_code == 422
+    today = today_kst().isoformat()
+    ok = client.post("/api/v1/onboarding", json={"property": {"name": "x"}, "units": [{**unit, "deposit_received_on": today}]})
+    assert ok.status_code in (200, 201), ok.text  # 오늘은 받을 수 있음

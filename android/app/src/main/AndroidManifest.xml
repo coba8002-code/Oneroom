@@ -1,24 +1,55 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 신뢰할 수 있는 웹 활동(TWA): 크롬이 주소창 없이 웹 화면을 띄움. 앱 안에 장부·연락처를 저장하지 않음 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- 입금 알림 전달: 고른 은행 문자·은행 앱 알림 중 '입금'만 계좌별 연결 주소로 (com.roomax.app.alerts) -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
 
-    <!-- 알림을 보낼 앱을 고르는 목록 (설치된 앱 이름만 본다) -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent>
-    </queries>
-
     <application
         android:allowBackup="false"
-        android:icon="@android:drawable/sym_def_app_icon"
-        android:label="ROOMAX 입금 알림"
-        android:theme="@android:style/Theme.Material.Light.DarkActionBar">
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar">
 
-        <activity android:name=".MainActivity" android:exported="true">
+        <meta-data
+            android:name="asset_statements"
+            android:resource="@string/asset_statements" />
+
+        <activity
+            android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <meta-data
+                android:name="android.support.customtabs.trusted.DEFAULT_URL"
+                android:value="@string/launch_url" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR"
+                android:resource="@color/theme" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
+                android:resource="@color/background" />
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="@string/host" />
+            </intent-filter>
+        </activity>
+
+        <!-- 두 번째 아이콘 'ROOMAX 입금 알림' — 연결 주소·문자 발신번호·은행 앱을 고르는 설정 화면 -->
+        <activity
+            android:name=".alerts.AlertSettingsActivity"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="ROOMAX 입금 알림"
+            android:taskAffinity="com.roomax.app.alerts"
+            android:theme="@android:style/Theme.Material.Light.DarkActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -26,7 +57,7 @@
         </activity>
 
         <receiver
-            android:name=".SmsReceiver"
+            android:name=".alerts.SmsReceiver"
             android:exported="true"
             android:permission="android.permission.BROADCAST_SMS">
             <intent-filter>
@@ -35,12 +66,34 @@
         </receiver>
 
         <service
-            android:name=".BankNotificationListener"
+            android:name=".alerts.BankNotificationListener"
             android:exported="true"
+            android:label="ROOMAX 입금 알림"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <service
+            android:name="com.google.androidbrowserhelper.trusted.DelegationService"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.support.customtabs.trusted.TRUSTED_WEB_ACTIVITY_SERVICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
     </application>
+
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+        <!-- 알림을 보낼 은행 앱 고르기 (설치된 앱 이름만 본다) -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 </manifest>

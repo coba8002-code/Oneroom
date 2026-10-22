@@ -1,4 +1,4 @@
-package kr.roomax.alerts
+package com.roomax.app.alerts
 
 import android.Manifest
 import android.app.Activity
@@ -20,7 +20,7 @@ import android.widget.Toast
 import kotlin.concurrent.thread
 
 /** 설정 화면 하나: 연결 주소 · 문자(발신번호) · 앱 알림(앱 고르기) · '입금'만 · 보낸 기록 */
-class MainActivity : Activity() {
+class AlertSettingsActivity : Activity() {
     private lateinit var url: EditText
     private lateinit var senders: EditText
     private lateinit var smsOn: CheckBox
@@ -40,12 +40,12 @@ class MainActivity : Activity() {
         url = EditText(this).apply {
             hint = "https://…/api/v1/bank-alerts/hook/…"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            setText(Prefs.hookUrl(this@MainActivity))
+            setText(Prefs.hookUrl(this@AlertSettingsActivity))
         }
         col.addView(url)
 
         col.addView(head("2. 은행 문자"))
-        smsOn = CheckBox(this).apply { text = "은행 문자 보내기"; isChecked = Prefs.smsEnabled(this@MainActivity) }
+        smsOn = CheckBox(this).apply { text = "은행 문자 보내기"; isChecked = Prefs.smsEnabled(this@AlertSettingsActivity) }
         col.addView(smsOn)
         col.addView(note("발신번호 (쉼표로 여러 개). 우리은행 기본값 ${Prefs.DEFAULT_SENDERS} — 실제 입금 문자의 번호를 확인해 고치세요."))
         senders = EditText(this).apply {
@@ -60,13 +60,13 @@ class MainActivity : Activity() {
         col.addView(button("알림 접근 허용하기") {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         })
-        col.addView(note("허용 목록에 안 보이거나 '제한된 설정'이라고 나오면: 설정 → 앱 → ROOMAX 입금 알림 → 오른쪽 위 ⋮ → '제한된 설정 허용' 뒤 다시 시도하세요."))
+        col.addView(note("허용 목록에 안 보이거나 '제한된 설정'이라고 나오면: 설정 → 앱 → ROOMAX → 오른쪽 위 ⋮ → '제한된 설정 허용' 뒤 다시 시도하세요."))
         appsLabel = TextView(this)
         col.addView(appsLabel)
         col.addView(button("알림 보낼 앱 고르기") { pickApps() })
 
         col.addView(head("4. 보내는 범위"))
-        depositOnly = CheckBox(this).apply { text = "'입금'이 들어간 것만 보내기 (권장)"; isChecked = Prefs.depositOnly(this@MainActivity) }
+        depositOnly = CheckBox(this).apply { text = "'입금'이 들어간 것만 보내기 (권장)"; isChecked = Prefs.depositOnly(this@AlertSettingsActivity) }
         col.addView(depositOnly)
 
         col.addView(button("저장") { save() })

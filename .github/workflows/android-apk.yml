@@ -1,0 +1,67 @@
+name: Android APK
+# 안드로이드 설치 파일(APK)을 만든다 — Actions 탭에서 'Run workflow' 를 누르거나 android/ 를 바꿔 main 에 올리면 실행.
+# 결과는 실행 화면의 Artifacts 에 'roomax-apk' 로 올라감. 서명 키는 저장소 Secrets 에만 둔다 (deploy/android-apk.md)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["android/**", ".github/workflows/android-apk.yml"]
+  pull_request:
+    paths: ["android/**", ".github/workflows/android-apk.yml"]
+
+permissions:
+  contents: write  # 'Run workflow' 로 만든 서명 APK 를 Release 에 올리기 위해 (아래 마지막 단계)
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: android } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.14.3" }
+      # 서명 키가 없으면(다른 사람의 PR 등) 서명 안 된 APK 만 올림
+      - name: 서명 키 준비
+        id: key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then echo "signed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/roomax-release.p12"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+      - name: APK 만들기
+        env:
+          ROOMAX_KEYSTORE: ${{ steps.key.outputs.signed == 'true' && format('{0}/roomax-release.p12', runner.temp) || '' }}
+          ROOMAX_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          [ -n "$ROOMAX_KEYSTORE" ] || unset ROOMAX_KEYSTORE ROOMAX_KEYSTORE_PASSWORD
+          gradle --no-daemon assembleRelease
+      - name: 키 파일 지우기
+        if: always()
+        run: rm -f "$RUNNER_TEMP/roomax-release.p12"
+      - uses: actions/upload-artifact@v4
+        if: steps.key.outputs.signed == 'true'
+        with:
+          name: roomax-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
+      # 키가 없으면 서명 안 된 APK 를 올림 — 키를 가진 사람이 자기 PC 에서 서명할 수 있게 (deploy/android-apk.md)
+      - uses: actions/upload-artifact@v4
+        if: steps.key.outputs.signed != 'true'
+        with:
+          name: roomax-apk-unsigned
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 7
+      # 'Run workflow' 로 만든 서명 APK 는 Release 에도 올림 — 로그인 없이 휴대폰에서 바로 받는 주소:
+      # https://github.com/<저장소>/releases/latest/download/ROOMAX.apk (공개 코드로 만든 파일, 비밀값 없음)
+      - name: Release 에 올리기
+        if: steps.key.outputs.signed == 'true' && github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk ROOMAX.apk
+          tag="apk-${{ github.run_number }}"
+          gh release create "$tag" ROOMAX.apk --target "${{ github.sha }}" --latest \
+            --title "ROOMAX 안드로이드 앱 ($tag)" --notes "휴대폰에서 ROOMAX.apk 를 눌러 받아 설치하세요 (안드로이드 6.0 이상, 크롬 필요)."

@@ -20,8 +20,8 @@ const BANKS: [string, string][] = [
   ["KB국민", "1588-9999"], ["신한", "1577-8000"], ["우리", "1588-5000"], ["하나", "1588-1111"], ["NH농협", "1588-2100"],
   ["IBK기업", "1566-2566"], ["카카오뱅크", "1599-3333"], ["토스뱅크", "1661-7654"], ["케이뱅크", "1522-1000"],
 ];
-// 입금 알림 전달 앱 — main 에 android/ 가 바뀌면 GitHub Actions 가 이 주소로 다시 올림 (.github/workflows/android.yml)
-const APK_URL = "https://github.com/coba8002-code/Oneroom/releases/download/android-latest/roomax-alerts.apk";
+// ROOMAX 안드로이드 앱(화면 + 입금 알림 전달) — 'Run workflow' 로 만든 서명 APK (.github/workflows/android-apk.yml, deploy/android-apk.md)
+const APK_URL = "https://github.com/coba8002-code/Oneroom/releases/latest/download/ROOMAX.apk";
 const SAMPLE = "[KB]\n123456**789\n홍길동\n입금\n450,000\n잔액12,876,500";
 
 export default function BankAlertCard({ orgId, canWrite }: { orgId: string; canWrite: boolean }) {
@@ -138,14 +138,14 @@ export default function BankAlertCard({ orgId, canWrite }: { orgId: string; canW
             </ol>
           </details>
           <details className="rounded-xl border border-slate-100 p-3">
-            <summary className="cursor-pointer font-medium">2단계 — 안드로이드: ROOMAX 입금 알림 앱 (권장)</summary>
+            <summary className="cursor-pointer font-medium">2단계 — 안드로이드: ROOMAX 앱의 &lsquo;입금 알림&rsquo; (권장)</summary>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-600">
-              <li>휴대폰에서 <a className="text-blue-600 underline" href={APK_URL}>APK 내려받기</a> → 설치 (&lsquo;출처를 알 수 없는 앱&rsquo; 허용)</li>
-              <li>앱의 <b>1. 연결 주소</b>에 위 주소를 붙여 넣고 <b>저장</b></li>
+              <li>휴대폰에서 <a className="text-blue-600 underline" href={APK_URL}>ROOMAX 앱 내려받기</a> → 설치 (&lsquo;출처를 알 수 없는 앱&rsquo; 허용). 아이콘이 둘 생깁니다: <b>ROOMAX</b>(화면)·<b>ROOMAX 입금 알림</b>(설정)</li>
+              <li><b>ROOMAX 입금 알림</b>을 열어 <b>1. 연결 주소</b>에 위 주소를 붙여 넣고 <b>저장</b></li>
               <li><b>2. 은행 문자</b>: 입금 문자를 보내는 번호(우리은행 기본 15885000)를 확인 → 저장할 때 문자 권한 허용</li>
-              <li><b>3. 은행 앱 알림</b>: &lsquo;알림 접근 허용하기&rsquo; → 우리WON뱅킹 등 은행 앱 고르기. &lsquo;제한된 설정&rsquo;이라고 나오면 설정 → 앱 → ROOMAX 입금 알림 → ⋮ → 제한된 설정 허용</li>
+              <li><b>3. 은행 앱 알림</b>: &lsquo;알림 접근 허용하기&rsquo; → 우리WON뱅킹 등 은행 앱 고르기. &lsquo;제한된 설정&rsquo;이라고 나오면 설정 → 앱 → ROOMAX → ⋮ → 제한된 설정 허용</li>
               <li>&lsquo;입금&rsquo;이 들어간 문자·알림만 보내고, 다른 문자·알림은 휴대폰 밖으로 나가지 않습니다. 인터넷이 끊기면 쌓아 두었다 다시 보냅니다.</li>
-              <li>배터리 최적화에서 <b>ROOMAX 입금 알림 제외</b></li>
+              <li>배터리 최적화에서 <b>ROOMAX 제외</b></li>
             </ol>
           </details>
           <details className="rounded-xl border border-slate-100 p-3">

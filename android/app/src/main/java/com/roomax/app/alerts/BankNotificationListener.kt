@@ -1,4 +1,4 @@
-package kr.roomax.alerts
+package com.roomax.app.alerts
 
 import android.app.Notification
 import android.service.notification.NotificationListenerService

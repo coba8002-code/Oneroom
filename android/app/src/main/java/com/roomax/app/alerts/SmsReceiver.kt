@@ -1,4 +1,4 @@
-package kr.roomax.alerts
+package com.roomax.app.alerts
 
 import android.content.BroadcastReceiver
 import android.content.Context
