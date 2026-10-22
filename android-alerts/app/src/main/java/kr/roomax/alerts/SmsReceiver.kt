@@ -15,7 +15,7 @@ class SmsReceiver : BroadcastReceiver() {
         val bySender = LinkedHashMap<String, StringBuilder>()
         for (msg in Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return) {
             val from = Prefs.digits(msg.originatingAddress ?: continue)
-            if (from !in senders) continue
+            if (!DeliveryPolicy.smsAllowed(true, from, senders)) continue
             bySender.getOrPut(from) { StringBuilder() }.append(msg.messageBody ?: "")  // 긴 문자는 여러 조각
         }
         if (bySender.isEmpty()) return

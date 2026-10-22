@@ -19,6 +19,14 @@ class DeliveryPolicyTest {
             "https://example.com/api/v1/bank-alerts/hook/x#secret", "https://example.com/api/v1/bank-alerts/hook/x/other")
             .forEach { assertFalse(it, DeliveryPolicy.isHookUrl(it)) }
     }
+    @Test fun onlySelectedSendersAndApps() {
+        assertTrue(DeliveryPolicy.smsAllowed(true, "1588-5000", setOf("15885000")))
+        assertFalse(DeliveryPolicy.smsAllowed(false, "15885000", setOf("15885000")))
+        assertFalse(DeliveryPolicy.smsAllowed(true, "01012345678", setOf("15885000")))
+        assertTrue(DeliveryPolicy.appAllowed("bank", setOf("bank"), false))
+        assertFalse(DeliveryPolicy.appAllowed("other", setOf("bank"), false))
+        assertFalse(DeliveryPolicy.appAllowed("bank", setOf("bank"), true))
+    }
     @Test fun transientFailuresOnly() {
         listOf(-1, 408, 429, 500, 503).forEach { assertTrue(DeliveryPolicy.retry(it)) }
         listOf(200, 204, 301, 400, 401, 404).forEach { assertFalse(DeliveryPolicy.retry(it)) }

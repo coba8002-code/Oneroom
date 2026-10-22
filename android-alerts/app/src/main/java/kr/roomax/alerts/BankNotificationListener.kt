@@ -10,7 +10,8 @@ class BankNotificationListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName !in Prefs.apps(this)) return
         val n = sbn.notification ?: return
-        if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return  // 묶음 요약은 건너뜀 (개별 알림이 따로 옴)
+        if (!DeliveryPolicy.appAllowed(sbn.packageName, Prefs.apps(this),
+                n.flags and Notification.FLAG_GROUP_SUMMARY != 0)) return  // 묶음 요약은 건너뜀 (개별 알림이 따로 옴)
         val extras = n.extras ?: return
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
         val body = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT)

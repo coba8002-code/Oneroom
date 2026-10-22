@@ -13,6 +13,8 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    outputs:
+      signed: ${{ steps.key.outputs.signed }}
     defaults: { run: { working-directory: android-alerts } }
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +27,31 @@ jobs:
         run: |
           test -n "$ANDROID_HOME"
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
-      - run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - name: Prepare alerts signing key
+        id: key
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_ALERTS_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_ALERTS_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then echo "signed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/roomax-alerts.p12"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+      - name: Test and build alerts
+        env:
+          ROOMAX_ALERTS_KEYSTORE: ${{ steps.key.outputs.signed == 'true' && format('{0}/roomax-alerts.p12', runner.temp) || '' }}
+          ROOMAX_ALERTS_KEYSTORE_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.ANDROID_ALERTS_KEYSTORE_PASSWORD || '' }}
+        run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/roomax-alerts.p12"
+      - uses: actions/upload-artifact@v4
+        if: steps.key.outputs.signed == 'true'
+        with:
+          name: roomax-alerts-release
+          path: android-alerts/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -39,17 +65,17 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # main 에 들어가면 고정 주소로 올린다: releases/download/android-latest/roomax-alerts.apk (화면 '입금 알림 자동 연결'의 링크)
+  # 별도 입금 앱 서명 키가 있을 때만 고정 주소로 올린다: releases/download/android-latest/roomax-alerts.apk (화면 '입금 알림 자동 연결'의 링크)
   release:
     needs: apk
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: needs.apk.outputs.signed == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
-        with: { name: roomax-alerts-apk }
-      - run: mv roomax-alerts-debug.apk roomax-alerts.apk
+        with: { name: roomax-alerts-release }
+      - run: mv app-release.apk roomax-alerts.apk
       - env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

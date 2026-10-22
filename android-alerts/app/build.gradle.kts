@@ -3,6 +3,9 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val keystorePath = System.getenv("ROOMAX_ALERTS_KEYSTORE")?.takeIf { it.isNotBlank() }
+val keystorePassword = System.getenv("ROOMAX_ALERTS_KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "kr.roomax.alerts"
     compileSdk = 35
@@ -17,8 +20,21 @@ android {
 
     testOptions { unitTests.isIncludeAndroidResources = true }
 
+    signingConfigs {
+        if (keystorePath != null && keystorePassword != null) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = keystorePassword
+                keyAlias = "roomax-alerts"
+                keyPassword = keystorePassword
+            }
+        }
+    }
     buildTypes {
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -33,5 +49,4 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("io.mockk:mockk:1.13.13")
     testImplementation("org.robolectric:robolectric:4.14.1")
-    testImplementation("androidx.work:work-testing:2.9.1")
 }

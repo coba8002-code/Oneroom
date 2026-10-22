@@ -17,9 +17,14 @@ object DeliveryPolicy {
     } catch (_: Exception) { false }
 
     fun wanted(text: String, depositOnly: Boolean): Boolean = text.isNotBlank() &&
-        text.length <= 10_000 &&
+        text.length <= 2_000 &&
         listOf("(광고)", "인증번호", "인증코드", "일회용", "OTP").none { text.contains(it, true) } &&
         (!depositOnly || (text.contains("입금") && !text.contains("출금")))
+
+    fun smsAllowed(enabled: Boolean, sender: String, selected: Set<String>): Boolean =
+        enabled && sender.filter { it.isDigit() }.let { it.isNotEmpty() && it in selected }
+    fun appAllowed(pkg: String, selected: Set<String>, groupSummary: Boolean): Boolean =
+        pkg in selected && !groupSummary
 
     fun fingerprint(text: String): String = MessageDigest.getInstance("SHA-256")
         .digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
