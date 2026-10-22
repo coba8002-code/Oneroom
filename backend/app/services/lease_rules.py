@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AuditLog, Deposit, Inspection, Lease, LeaseCheck
+from app.services import rental_business
 from app.services.contracts import lease_in_org
 
 REPORT_DEPOSIT_OVER = 60_000_000
@@ -74,6 +75,7 @@ def checklist(session: Session, organization_id: uuid.UUID, lease_id: uuid.UUID,
                 elif item["status"] == "todo":
                     item["hint"] += ". 계약일을 넣으면 기한을 계산합니다"
         items.append(item)
+    items += rental_business.contract_items(session, lease, as_of, checks)  # 등록 임대주택이면 민특법 항목
     move_in = session.scalar(select(Inspection).where(Inspection.lease_id == lease.id, Inspection.kind == "move_in"))
     items.append({"key": "move_in_inspection", "label": "입주 점검 (사진·임차인 확인)", "basis": "퇴실 정산의 근거", "auto": True,
                   "status": "done" if move_in and move_in.tenant_confirmed_on else "todo",
@@ -103,7 +105,8 @@ def set_check(session: Session, organization_id: uuid.UUID, user_id, lease_id: u
               status: str | None, done_on: date | None, note: str | None) -> None:
     """status None 이면 기록을 지운다(해야 할 일로 되돌림)."""
     lease = _lease(session, organization_id, lease_id)
-    if key not in MANUAL_KEYS:
+    if key not in MANUAL_KEYS and not (key in rental_business.CONTRACT_KEYS
+                                       and rental_business.registration_for_lease(session, lease)):
         raise RuleError("직접 표시할 수 없는 항목입니다")
     if status not in (None, "done", "na"):
         raise RuleError("상태는 '했음' 또는 '해당 없음'입니다")

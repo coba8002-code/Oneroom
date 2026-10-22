@@ -344,3 +344,33 @@ test("관리비 분리: 섞인 월세를 '월세 + 관리비'로 나눠 적기 �
   await expect(paper.locator("tbody tr").filter({ hasText: "2026-11-01" })).toContainText("400,000원");
   await expect(paper).toContainText("관리비 월 50,000원 별도");
 });
+
+test("임대사업자: 건물 전체 등록 → 챙길 일(보증·부기등기) → 보증 넣기 → 경고 사라짐 · 홈 알림", async ({ page }) => {
+  await signupAndOnboard(page);
+  await page.goto("/rental-business");
+  await expect(page.getByText(/아직 등록 임대주택이 없습니다/)).toBeVisible();
+  await expect(page.getByText(/확인 필요 — 증액 상한 5%/)).toBeVisible();
+  await page.getByRole("button", { name: "등록 임대주택 추가" }).click();
+  await page.getByLabel("주택 유형").selectOption({ label: "다가구주택" });
+  await page.getByLabel("임대 유형").selectOption({ label: "장기일반민간임대주택" });
+  await expect(page.getByLabel("임대의무기간 (년, 모르면 비움)")).toHaveValue("10");  // 제안값 — 고칠 수 있음
+  await page.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(page.getByText("등록 임대주택을 추가했습니다.")).toBeVisible();
+
+  const card = page.locator("section.card").filter({ hasText: "장기일반민간임대주택" }).last();
+  await expect(card.getByText("보증 기록 없음")).toBeVisible();
+  await expect(page.getByText(/유효한 임대보증금 보증 기록이 없습니다/)).toBeVisible();
+  await expect(page.getByText(/부기등기\(등록 임대주택임을 등기부에 표시\) 기록이 없습니다/)).toBeVisible();
+
+  await page.goto("/");
+  await expect(page.getByText(/\[임대사업자\].*보증 기록이 없습니다/)).toBeVisible();
+
+  await page.goto("/rental-business");
+  await card.getByLabel("보증기관").selectOption({ label: "주택도시보증공사(HUG)" });
+  await card.getByRole("button", { name: "보증 넣기" }).click();
+  await expect(page.getByText("보증 기록을 넣었습니다.")).toBeVisible();
+  await expect(card.getByText("보증 가입")).toBeVisible();
+  await expect(page.getByText(/유효한 임대보증금 보증 기록이 없습니다/)).toHaveCount(0);
+  await page.setViewportSize({ width: 375, height: 800 });
+  await noOverflow(page);
+});

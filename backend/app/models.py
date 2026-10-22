@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import (
     case,
@@ -707,6 +708,54 @@ class TenantNotice(Base):
     body: Mapped[str | None] = mapped_column(Text)
     starts_on: Mapped[date] = mapped_column(Date)
     ends_on: Mapped[date | None] = mapped_column(Date)  # 없으면 지울 때까지
+    created_at: Mapped[datetime] = created_at()
+
+
+class RentalBusinessProfile(Base):
+    """등록임대사업자 정보 (민간임대주택에 관한 특별법). 사업장당 1건. 상한·기한 값은 법령 문언의 기본값을
+    관리자가 확인해 바꿀 수 있다 (시행 시기·주택에 따라 다를 수 있음)."""
+    __tablename__ = "rental_business_profiles"
+    id: Mapped[uuid.UUID] = pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), unique=True)
+    registration_no: Mapped[str | None] = mapped_column(String(50))  # 지자체 임대사업자 등록번호
+    registered_on: Mapped[date | None] = mapped_column(Date)
+    tax_business_no: Mapped[str | None] = mapped_column(String(20))  # 세무서 사업자등록번호
+    increase_cap_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2))  # 임대료 증액 상한 (기본 5)
+    report_months: Mapped[int] = mapped_column(Integer)  # 임대차계약 신고 기한 (계약일부터, 기본 3개월)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class RegisteredRental(Base):
+    """등록 임대주택 — 한 호실, 또는 unit_id 없이 건물 전체(다가구처럼 한 채로 등록)."""
+    __tablename__ = "registered_rentals"
+    __table_args__ = (CheckConstraint("lien_status IS NULL OR lien_status IN ('done', 'na')",
+                                      name="ck_registered_rentals_lien"),)
+    id: Mapped[uuid.UUID] = pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    property_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("properties.id"), index=True)
+    unit_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units.id"))
+    housing_type: Mapped[str] = mapped_column(String(30))  # multi_household | multi_family | officetel | apartment | other
+    rental_type: Mapped[str] = mapped_column(String(30))  # long_term | public_support | short_term | other
+    registered_on: Mapped[date | None] = mapped_column(Date)
+    rental_start_on: Mapped[date | None] = mapped_column(Date)  # 임대의무기간 시작일. 모르면 비움
+    obligation_years: Mapped[int | None] = mapped_column(Integer)  # 관리자가 등록증으로 확인한 값만
+    lien_status: Mapped[str | None] = mapped_column(String(10))  # 부기등기 done | na | 모름
+    lien_done_on: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class RentalGuarantee(Base):
+    """임대보증금 보증 가입 (HUG·SGI 등). provider='exempt' 는 관리자가 확인한 가입 면제."""
+    __tablename__ = "rental_guarantees"
+    id: Mapped[uuid.UUID] = pk()
+    registration_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("registered_rentals.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(20))  # hug | sgi | other | exempt
+    policy_no: Mapped[str | None] = mapped_column(String(50))
+    start_on: Mapped[date | None] = mapped_column(Date)
+    end_on: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
 
 
