@@ -4,7 +4,16 @@ import uuid
 from datetime import date, datetime
 from typing import Literal
 
+from zoneinfo import ZoneInfo
+
 from pydantic import BaseModel, Field, model_validator
+
+# 보증금 받은 날은 '들어온 증거' — 아직 오지 않은 날은 받은 것으로 적지 않는다 (받기 전이면 비워 둠)
+FUTURE_DEPOSIT_MSG = "보증금 받은 날은 오늘(한국 시간) 이후일 수 없습니다. 아직 받지 않았으면 비워 두세요"
+
+
+def today_kst() -> date:
+    return datetime.now(ZoneInfo("Asia/Seoul")).date()
 
 
 class PropertyIn(BaseModel):
@@ -45,6 +54,8 @@ class UnitIn(BaseModel):
                 raise ValueError(f"{self.unit_no}: 계약을 만들려면 {', '.join(missing)} 이(가) 필요합니다")
             if self.end_date and self.start_date and self.end_date < self.start_date:
                 raise ValueError(f"{self.unit_no}: 계약종료가 계약시작보다 빠릅니다")
+            if self.deposit_received_on and self.deposit_received_on > today_kst():
+                raise ValueError(f"{self.unit_no}: {FUTURE_DEPOSIT_MSG}")
         return self
 
 
