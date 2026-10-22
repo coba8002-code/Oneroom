@@ -1,4 +1,4 @@
-name: Android APK
+name: Android TWA APK
 # 안드로이드 설치 파일(APK)을 만든다 — Actions 탭에서 'Run workflow' 를 누르거나 android/ 를 바꿔 main 에 올리면 실행.
 # 결과는 실행 화면의 Artifacts 에 'roomax-apk' 로 올라감. 서명 키는 저장소 Secrets 에만 둔다 (deploy/android-apk.md)
 on:
@@ -22,9 +22,14 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: "8.14.3" }
+      - name: Verify Android SDK
+        run: |
+          test -n "$ANDROID_HOME"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
       # 서명 키가 없으면(다른 사람의 PR 등) 서명 안 된 APK 만 올림
       - name: 서명 키 준비
         id: key
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
@@ -37,7 +42,7 @@ jobs:
           ROOMAX_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           [ -n "$ROOMAX_KEYSTORE" ] || unset ROOMAX_KEYSTORE ROOMAX_KEYSTORE_PASSWORD
-          gradle --no-daemon assembleRelease
+          gradle --no-daemon :app:lintRelease :app:assembleRelease
       - name: 키 파일 지우기
         if: always()
         run: rm -f "$RUNNER_TEMP/roomax-release.p12"
@@ -46,6 +51,7 @@ jobs:
         with:
           name: roomax-apk
           path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
           retention-days: 30
       # 키가 없으면 서명 안 된 APK 를 올림 — 키를 가진 사람이 자기 PC 에서 서명할 수 있게 (deploy/android-apk.md)
       - uses: actions/upload-artifact@v4
@@ -53,11 +59,12 @@ jobs:
         with:
           name: roomax-apk-unsigned
           path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
           retention-days: 7
       # 'Run workflow' 로 만든 서명 APK 는 Release 에도 올림 — 로그인 없이 휴대폰에서 바로 받는 주소:
       # https://github.com/<저장소>/releases/latest/download/ROOMAX.apk (공개 코드로 만든 파일, 비밀값 없음)
       - name: Release 에 올리기
-        if: steps.key.outputs.signed == 'true' && github.event_name == 'workflow_dispatch'
+        if: steps.key.outputs.signed == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

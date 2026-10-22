@@ -1,0 +1,85 @@
+name: Android Alerts APK
+# 입금 알림 전달 앱(android-alerts/)을 만들어 'roomax-alerts-apk' 로 올린다 — Actions 실행 화면 맨 아래에서 내려받기
+on:
+  push:
+    paths: ["android-alerts/**", ".github/workflows/android.yml"]
+  pull_request:
+    paths: ["android-alerts/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    outputs:
+      signed: ${{ steps.key.outputs.signed }}
+    defaults: { run: { working-directory: android-alerts } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      # 러너에 안드로이드 SDK 가 이미 있음 (ANDROID_HOME) — 빠진 플랫폼은 빌드가 받아 옴
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.14.3" }
+      - name: Verify Android SDK
+        run: |
+          test -n "$ANDROID_HOME"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+      - name: Prepare alerts signing key
+        id: key
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_ALERTS_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_ALERTS_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then echo "signed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/roomax-alerts.p12"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+      - name: Test and build alerts
+        env:
+          ROOMAX_ALERTS_KEYSTORE: ${{ steps.key.outputs.signed == 'true' && format('{0}/roomax-alerts.p12', runner.temp) || '' }}
+          ROOMAX_ALERTS_KEYSTORE_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.ANDROID_ALERTS_KEYSTORE_PASSWORD || '' }}
+        run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/roomax-alerts.p12"
+      - uses: actions/upload-artifact@v4
+        if: steps.key.outputs.signed == 'true'
+        with:
+          name: roomax-alerts-release
+          path: android-alerts/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: roomax-alerts-test-reports
+          path: android-alerts/app/build/reports
+      - run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/roomax-alerts-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: roomax-alerts-apk
+          path: android-alerts/app/build/outputs/apk/debug/roomax-alerts-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  # 별도 입금 앱 서명 키가 있을 때만 고정 주소로 올린다: releases/download/android-latest/roomax-alerts.apk (화면 '입금 알림 자동 연결'의 링크)
+  release:
+    needs: apk
+    if: needs.apk.outputs.signed == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: roomax-alerts-release }
+      - run: mv app-release.apk roomax-alerts.apk
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest roomax-alerts.apk --target "$GITHUB_SHA" \
+            --title "ROOMAX 입금 알림 (안드로이드)" --notes "main $GITHUB_SHA 에서 만든 APK. 은행 문자·앱 알림 중 '입금'만 ROOMAX 연결 주소로 보냅니다." --prerelease --latest=false
