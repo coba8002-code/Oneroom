@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- frontend/app/manifest.ts 의 theme_color·background_color 와 같게 -->
+<resources>
+    <color name="theme">#172d4f</color>
+    <color name="background">#ffffff</color>
+</resources>

@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AuditLog, Charge, Deposit, Lease, MoveOutSettlement, Payment, Property, Tenant, Unit
+from app.schemas import FUTURE_DEPOSIT_MSG, today_kst
 from app.services import ledger
 from app.services.contracts import lease_in_org
 
@@ -118,6 +119,8 @@ def new_lease(session: Session, organization_id: uuid.UUID, user_id, unit_id: uu
         raise LeaseError("보증금·월세·관리비는 0원 이상, 납부일은 1~31일입니다")
     if end_date is not None and end_date <= start_date:
         raise LeaseError("만료일은 시작일보다 뒤여야 합니다")
+    if deposit_received_on is not None and deposit_received_on > today_kst():
+        raise LeaseError(FUTURE_DEPOSIT_MSG)
     prev_end = session.scalar(select(func.max(Lease.ended_on)).where(Lease.unit_id == unit.id))
     if prev_end is not None and start_date <= prev_end:
         raise LeaseError(f"앞 계약이 {prev_end.isoformat()}에 끝났습니다. 시작일은 그 뒤로 정하세요")

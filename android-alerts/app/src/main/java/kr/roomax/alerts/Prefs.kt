@@ -11,7 +11,20 @@ object Prefs {
 
     fun of(ctx: Context): SharedPreferences = ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE)
 
-    fun hookUrl(ctx: Context): String = of(ctx).getString("hook_url", "") ?: ""
+    fun hookUrl(ctx: Context): String {
+        val p = of(ctx)
+        // Upgrade an earlier test APK without retaining a plaintext token or queue.
+        if (p.contains("hook_url")) {
+            val old = p.getString("hook_url", "").orEmpty()
+            check(p.edit().putString("hook_secret", SecretStore.encrypt(old))
+                .remove("hook_url").remove("pending").commit())
+        }
+        return p.getString("hook_secret", null)?.let { SecretStore.decrypt(it) }.orEmpty()
+    }
+
+    fun saveHookUrl(ctx: Context, value: String) {
+        check(of(ctx).edit().putString("hook_secret", SecretStore.encrypt(value)).remove("hook_url").commit())
+    }
 
     fun smsEnabled(ctx: Context): Boolean = of(ctx).getBoolean("sms_enabled", true)
 
@@ -28,9 +41,17 @@ object Prefs {
     fun digits(s: String): String = s.filter { it.isDigit() }
 
     fun readList(ctx: Context, key: String): JSONArray =
-        try { JSONArray(of(ctx).getString(key, "[]")) } catch (e: Exception) { JSONArray() }
+        if (key == "pending") {
+            of(ctx).getString("pending_secret", null)?.let { JSONArray(SecretStore.decrypt(it)) } ?: JSONArray()
+        } else JSONArray(of(ctx).getString(key, "[]"))
 
     fun writeList(ctx: Context, key: String, list: JSONArray) {
-        of(ctx).edit().putString(key, list.toString()).apply()
+        val editor = of(ctx).edit()
+        if (key == "pending") {
+            editor.remove("pending")
+            if (list.length() == 0) editor.remove("pending_secret")
+            else editor.putString("pending_secret", SecretStore.encrypt(list.toString()))
+        } else editor.putString(key, list.toString())
+        check(editor.commit()) { "Could not persist delivery state" }
     }
 }

@@ -201,7 +201,7 @@ function NewLeaseForm({ busy, prevEnd, onSave, onCancel }: { busy: boolean; prev
       <label className="block text-xs text-slate-600">계약서 쓴 날 (임대차 신고 기한 기준)<input type="date" className="field mt-1 w-full" value={f.signed_on} onChange={set("signed_on")} /></label>
       <label className="block text-xs text-slate-600">계약 시작일<input type="date" className="field mt-1 w-full" value={f.start_date} onChange={set("start_date")} /></label>
       <label className="block text-xs text-slate-600">계약 만료일 (선택)<input type="date" className="field mt-1 w-full" value={f.end_date} onChange={set("end_date")} /></label>
-      <label className="block text-xs text-slate-600">보증금 받은 날 (이미 받았으면)<input type="date" className="field mt-1 w-full" value={f.deposit_received_on} onChange={set("deposit_received_on")} /></label>
+      <label className="block text-xs text-slate-600">보증금 받은 날 (이미 받았으면)<input type="date" max={todayKst()} className="field mt-1 w-full" value={f.deposit_received_on} onChange={set("deposit_received_on")} /></label>
       <div className="flex gap-2 sm:col-span-2">
         <button type="button" className="btn-primary btn-sm" disabled={busy || !ready} onClick={() => onSave({
           tenant_name: f.tenant_name, tenant_phone: f.tenant_phone || null, deposit: Number(f.deposit || 0), rent: Number(f.rent),

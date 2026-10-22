@@ -71,10 +71,11 @@ class MainActivity : Activity() {
 
         col.addView(button("저장") { save() })
 
+        col.addView(note("미전송 원문은 기기 키로 암호화하여 최대 50건·7일 보관하고 전송 후 삭제합니다. 연결 주소 변경 시 기존 대기열은 삭제합니다. 기록에는 내용이 남지 않습니다."))
         col.addView(head("보낸 기록"))
         pending = TextView(this)
         col.addView(pending)
-        col.addView(button("못 보낸 것 다시 보내기") { thread { Forwarder.flush(applicationContext); runOnUiThread { refresh() } } })
+        col.addView(button("못 보낸 것 다시 보내기") { thread { RetryWorker.schedule(applicationContext); runOnUiThread { refresh() } } })
         log = TextView(this).apply { textSize = 13f }
         col.addView(log)
 
@@ -84,7 +85,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         refresh()
-        thread { Forwarder.flush(applicationContext); runOnUiThread { refresh() } }
+        thread { RetryWorker.schedule(applicationContext); runOnUiThread { refresh() } }
     }
 
     private fun save() {
@@ -93,8 +94,9 @@ class MainActivity : Activity() {
             toast("연결 주소가 아닙니다 — https:// 로 시작하고 /api/v1/bank-alerts/hook/ 이 들어 있어야 합니다")
             return
         }
+        Forwarder.configure(this, u)
+        RetryWorker.schedule(this)
         Prefs.of(this).edit()
-            .putString("hook_url", u)
             .putString("sms_senders", senders.text.toString().trim())
             .putBoolean("sms_enabled", smsOn.isChecked)
             .putBoolean("deposit_only", depositOnly.isChecked)
