@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.android")  // 입금 알림 전달(문자·은행 앱 알림) — com/roomax/app/alerts
 }
 
 // 서명 키는 저장소에 두지 않는다 — CI(GitHub Actions)가 비밀값에서 꺼내 경로·비밀번호를 환경 변수로 넘김
@@ -41,6 +42,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    kotlinOptions { jvmTarget = "17" }
 }
 
 dependencies {
