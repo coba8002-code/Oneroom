@@ -54,3 +54,10 @@ jobs:
           name: roomax-apk-unsigned
           path: android/app/build/outputs/apk/release/app-release-unsigned.apk
           retention-days: 7
+      # TEMP(병합 전 삭제): 서명 안 된 APK(공개 코드 빌드 결과, 비밀 없음)를 로그에 base64 로 — Artifacts 저장소에 접속 못 하는 환경에서 받아 서명하려고
+      - name: TEMP unsigned APK to log
+        if: steps.key.outputs.signed != 'true'
+        run: |
+          f=app/build/outputs/apk/release/app-release-unsigned.apk
+          echo "APK_SHA256=$(sha256sum $f | cut -d' ' -f1)"
+          echo "APK_B64_BEGIN"; base64 -w 1000 $f | sed 's/^/B64:/'; echo "APK_B64_END"
