@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMe } from "@/lib/me";
 import {
   api,
+  todayKst,
   type ChargeOut,
   type ImportOut,
   type OnboardingOut,
@@ -280,7 +281,7 @@ function UnitCard({ row: r, index, onChange, onRemove }: {
         {field("deposit", "보증금", { inputMode: "numeric" })}
         {field("start_date", "계약시작", { type: "date" })}
         {field("end_date", "계약종료", { type: "date" })}
-        {field("deposit_received_on", "보증금 받은 날", { type: "date" })}
+        {field("deposit_received_on", "보증금 받은 날", { type: "date", max: todayKst() })}
       </div>
       {!owner && (r.rent || r.deposit) && (
         <p className="mt-2 text-xs text-slate-500">

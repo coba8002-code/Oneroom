@@ -1,10 +1,12 @@
 """계약 종료 · 되돌리기 · 새 계약."""
 import uuid
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
 
 from app.models import AuditLog, Charge
+from app.schemas import today_kst
 
 
 @pytest.fixture
@@ -97,6 +99,9 @@ def test_new_lease_on_vacant_unit(client, org):
     assert client.post(f"/api/v1/units/{units['101']['unit_id']}/leases", json=body).status_code == 409  # 계약 중
     assert client.post(f"/api/v1/units/{vacant}/leases", json={**body, "due_day": 32}).status_code == 409
     assert client.post(f"/api/v1/units/{vacant}/leases", json={**body, "end_date": "2026-11-01"}).status_code == 409
+    tomorrow = (today_kst() + timedelta(days=1)).isoformat()
+    res = client.post(f"/api/v1/units/{vacant}/leases", json={**body, "deposit_received_on": tomorrow})
+    assert res.status_code == 409 and "보증금 받은 날" in res.text  # 아직 오지 않은 날은 '받음'으로 못 적음
     res = client.post(f"/api/v1/units/{vacant}/leases", json=body)
     assert res.status_code == 201
     h = _history(client, "203")
