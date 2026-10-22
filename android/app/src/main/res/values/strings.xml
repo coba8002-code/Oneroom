@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ROOMAX</string>
+    <string name="host">oneroom-ten.vercel.app</string>
+    <string name="launch_url">https://oneroom-ten.vercel.app/</string>
+    <!-- 이 앱이 위 사이트의 주인임을 서로 확인 — 사이트 쪽은 frontend/public/.well-known/assetlinks.json -->
+    <string name="asset_statements" translatable="false">[{\"relation\": [\"delegate_permission/common.handle_all_urls\"], \"target\": {\"namespace\": \"web\", \"site\": \"https://oneroom-ten.vercel.app\"}}]</string>
+</resources>
