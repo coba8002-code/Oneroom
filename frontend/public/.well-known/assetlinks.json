@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.roomax.app",
+      "sha256_cert_fingerprints": [
+        "82:E3:F5:70:C2:FA:E6:3C:0E:BB:AC:82:C1:18:D1:64:37:81:7F:F8:4C:45:52:AD:19:B7:8B:56:11:44:E8:34"
+      ]
+    }
+  }
+]
