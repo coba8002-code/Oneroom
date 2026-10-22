@@ -32,6 +32,9 @@ export async function signupAndOnboard(page: Page): Promise<string> {
   await page.waitForURL(/\/onboarding/);
   await page.getByLabel("건물 이름").fill("행복빌라");
   await page.locator("input[type=file]").first().setInputFiles(`${SAMPLES}/onboarding_units.csv`);
+  // CSV 는 서버 미리보기(/onboarding/csv-preview)를 거쳐 표에 들어간다 — 표가 채워지기 전에 '등록'을 누르면
+  // '호실 번호를 하나 이상 입력하세요'로 멈춘다 (첫 테스트처럼 서버가 처음 요청을 받을 때 느려서 생기던 경합)
+  await expect(page.getByText(/임대 9실/)).toBeVisible();
   await expect(page.getByRole("button", { name: "등록", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "등록", exact: true }).click();
   await page.getByText("등록 완료").waitFor();
