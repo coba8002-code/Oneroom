@@ -25,6 +25,7 @@ import {
   FileBarChart,
   Megaphone,
   Droplets,
+  BadgeCheck,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -48,6 +49,7 @@ const NAV: NavItem[] = [
   { href: "/vacancy", label: "공실 관리", icon: DoorClosed },
   { href: "/assets", label: "자산·수리", icon: Package },
   { href: "/reports", label: "월간 보고서", icon: FileBarChart },
+  { href: "/rental-business", label: "임대사업자", icon: BadgeCheck },
   { href: "/tax", label: "세무 준비", icon: Landmark },
   { href: "/simulate", label: "전월세 시뮬레이션", icon: Calculator },
   { href: "/assistant", label: "AI 비서", icon: Bot },

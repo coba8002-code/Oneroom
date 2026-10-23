@@ -8,8 +8,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models import Charge, Deposit, Lease, Payment, Property, Tenant, Transaction, TransactionAllocation, Unit
-from app.services import (backup, fixtures, lease_renewal, lease_rules, ledger, receivables, reports, routines,
-                          tax_calendar, tenant_portal)
+from app.services import (backup, fixtures, lease_renewal, lease_rules, ledger, receivables, rental_business, reports,
+                          routines, tax_calendar, tenant_portal)
 from app.services.charges import MONTHLY, due_date_for
 from app.services.expenses import kst_date
 from app.services.matching import org_transactions
@@ -249,6 +249,8 @@ def build(session: Session, organization_id: uuid.UUID, as_of: date) -> dict:
         unit_no = next(u.label for u in units if u.id == le.unit_id)
         add("warn", "lease_report", f"{unit_no} 임대차 신고 기한 {due:%Y-%m-%d}" + (" 이 지났습니다" if late else " 입니다")
             + " (보증금 6천만 원 초과 또는 월세 30만 원 초과). 신고했거나 대상 지역이 아니면 호실·계약에서 표시하세요.", "/units")
+    for o in rental_business.alerts(session, organization_id, as_of):
+        add("warn", f"rental_{o['kind']}", f"[임대사업자] {o['place']} — {o['message']}", "/rental-business")
     # 종료된 계약이라도 보증금을 돌려주기 전까지는 부채 — 계속 알린다
     for unit_no, amount, ended_on in session.execute(
             select(Unit.label, func.sum(Deposit.amount), Lease.ended_on)
