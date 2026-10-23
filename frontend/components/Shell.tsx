@@ -26,6 +26,7 @@ import {
   Megaphone,
   Droplets,
   BadgeCheck,
+  Camera,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -39,6 +40,7 @@ const NAV: NavItem[] = [
   { href: "/", label: "대시보드", icon: LayoutDashboard },
   { href: "/onboarding", label: "건물·호실 등록", icon: Building2 },
   { href: "/units", label: "호실·계약", icon: DoorOpen },
+  { href: "/smart-import", label: "사진으로 넣기", icon: Camera },
   { href: "/contracts", label: "계약 관리", icon: FileText },
   { href: "/move-out", label: "입주·퇴실", icon: ClipboardCheck },
   { href: "/payments", label: "임대료 관리", icon: Wallet },

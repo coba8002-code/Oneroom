@@ -9,5 +9,6 @@ export const LEGAL = {
   contactEmail: "(운영자 연락 이메일 기재)",
   effectiveDate: "2026-10-17",
   version: "1.0",
-  privacyVersion: "1.1",  // 1.1: AI 비서 국외 이전 고지
+  privacyVersion: "1.2",  // 1.1: AI 비서 국외 이전 고지 · 1.2: 사진 판독(계약서·통장 캡처) 국외 이전
+  privacyEffectiveDate: "2026-10-23",
 } as const;

@@ -9,7 +9,7 @@ from app.db import engine
 from app.routers import (assets, assistant, auth, backups, bank, bank_alerts, charges, contracts, dashboard, expenses,
                          internal, leases, members, monthly_report, move_out, notifications, onboarding, payments,
                          rent_certificate, rent_sim, rental_business, routines, tax_prep, tenant_notices,
-                         tenant_portal, utilities, vacancy)
+                         tenant_portal, utilities, vacancy, vision)
 
 PRODUCTION = settings.env == "production"
 if PRODUCTION and (problems := production_problems(settings)):
@@ -36,7 +36,7 @@ app.include_router(tenant_portal.public)  # 임차인 화면 — 계약별 초�
 PROTECTED = [Depends(org_guard)]
 for r in (onboarding, charges, bank, payments, expenses, dashboard, contracts, backups, members, notifications,
           assets, move_out, leases, tax_prep, rent_sim, bank_alerts, routines, vacancy, assistant, monthly_report,
-          tenant_portal, rent_certificate, tenant_notices, utilities, rental_business):
+          tenant_portal, rent_certificate, tenant_notices, utilities, rental_business, vision):
     app.include_router(r.router, dependencies=PROTECTED)
 
 
