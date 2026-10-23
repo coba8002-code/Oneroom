@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
@@ -16,6 +17,7 @@ import {
   type Receivables,
   won,
 } from "@/lib/api";
+import { handOffBankPhotos } from "@/lib/photoHandoff";
 
 const btn =
   "btn";
@@ -308,6 +310,7 @@ function BankImport({ orgId, busy, onFile }: {
 }) {
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [accountId, setAccountId] = useState("");
+  const router = useRouter();
   useEffect(() => {
     if (!orgId) return;
     api<BankAccount[]>(`/api/v1/bank-accounts?organization_id=${orgId}`)
@@ -318,7 +321,8 @@ function BankImport({ orgId, busy, onFile }: {
   return (
     <section className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white p-3 text-sm">
       <span className="mr-auto text-slate-600">
-        은행 거래내역 가져오기 <span className="text-xs text-slate-500">(CSV·XLSX·XLS, 같은 파일을 다시 올려도 중복 없음)</span>
+        은행 거래내역 가져오기 <span className="text-xs text-slate-500">(CSV·XLSX·XLS, 같은 파일을 다시 올려도 중복 없음 ·
+        파일이 없으면 은행 앱 캡처 사진·zip 도 됩니다)</span>
       </span>
       {accounts.length > 1 && (
         <select className={select} aria-label="은행 계좌" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
@@ -327,8 +331,15 @@ function BankImport({ orgId, busy, onFile }: {
       )}
       <label className={`${btn} cursor-pointer border bg-white hover:bg-slate-50 ${busy ? "pointer-events-none opacity-50" : ""}`}>
         파일 선택
-        <input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={busy}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f && accountId) onFile(accountId, f); e.target.value = ""; }} />
+        <input type="file" multiple accept=".csv,.xlsx,.xls,image/*,.zip" className="hidden" disabled={busy}
+          onChange={(e) => {
+            const fs = Array.from(e.target.files ?? []);
+            e.target.value = "";
+            if (!fs.length || !accountId) return;
+            // 사진·zip 은 '사진으로 넣기'에서 읽고 표로 확인한 뒤 넣는다
+            if (handOffBankPhotos(fs, accountId)) router.push("/smart-import?tab=bank");
+            else onFile(accountId, fs[0]);
+          }} />
       </label>
     </section>
   );

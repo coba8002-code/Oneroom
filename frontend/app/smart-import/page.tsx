@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, won } from "@/lib/api";
 import { recognizeTexts } from "@/lib/freeOcr";
 import { shrinkImage } from "@/lib/image";
+import { takeBankPhotos } from "@/lib/photoHandoff";
 import { batches, prepareFiles } from "@/lib/photoPrep";
 import { useMe } from "@/lib/me";
 
@@ -29,7 +30,7 @@ const AI_MAX_FILES = 5;
 const AI_MAX_BYTES = 3_800_000;
 
 /** zip 풀기·긴 캡처 자르기 → 무료(기기 안 글자 인식) 또는 AI(5장씩 나눠 보내 결과 합치기) */
-async function readPhotos<T>(kind: "units" | "bank", picked: FileList, mode: Mode, onStage: (s: string) => void): Promise<ReadOut<T>> {
+async function readPhotos<T>(kind: "units" | "bank", picked: FileList | File[], mode: Mode, onStage: (s: string) => void): Promise<ReadOut<T>> {
   // 계약 화면은 사진 하나 = 호실 하나라 휴대폰 캡처(세로 2.2배 안팎)는 자르지 않는다. 통장 전체 캡처처럼 아주 긴 것만
   const files = await prepareFiles(Array.from(picked), { tallRatio: kind === "bank" ? 2.2 : 3.5 });
   if (!files.length) throw new Error("사진·PDF 를 찾지 못했습니다 (zip 안에도 없음)");
@@ -61,6 +62,8 @@ export default function SmartImportPage() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [choice, setChoice] = useState<Mode | null>(null);
   const mode: Mode = choice ?? (st?.configured ? "ai" : "free");
+  // 임대료 관리·첫 설정의 통장 파일 칸에서 사진을 고르면 ?tab=bank 로 넘어온다
+  useEffect(() => { if (new URLSearchParams(window.location.search).get("tab") === "bank") setTab("bank"); }, []);
   const loadStatus = useCallback(() => api<Status>("/api/v1/vision/status").then(setSt).catch((e) => setMsg({ ok: false, text: e.message })), []);
   useEffect(() => { loadStatus(); }, [loadStatus]);
 
@@ -277,11 +280,11 @@ function BankTab({ enabled, mode, orgId, onMsg, onRead }: { enabled: boolean; mo
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!orgId) return;
-    api<Account[]>(`/api/v1/bank-accounts?organization_id=${orgId}`).then((a) => { setAccounts(a); setAcct(a[0]?.id ?? ""); }).catch(() => setAccounts([]));
+    api<Account[]>(`/api/v1/bank-accounts?organization_id=${orgId}`).then((a) => { setAccounts(a); setAcct((cur) => cur || a[0]?.id || ""); }).catch(() => setAccounts([]));
   }, [orgId]);
   const [stage, setStage] = useState("");
   const ready = (r: BankEdit) => !!r.date && !!r.direction && !!r.amount && r.amount > 0;
-  const pick = async (files: FileList) => {
+  const pick = async (files: FileList | File[]) => {
     setBusy(true); setStage(""); onMsg(null);
     try {
       const out = await readPhotos<BankRow>("bank", files, mode, setStage);
@@ -311,6 +314,15 @@ function BankTab({ enabled, mode, orgId, onMsg, onRead }: { enabled: boolean; mo
     setBusy(false);
   };
   const noBalance = chosen.some((r) => r.balance_after == null);
+  // 다른 화면에서 넘겨받은 캡처는 판독 방식이 정해지면(enabled) 바로 읽는다
+  useEffect(() => {
+    if (!enabled) return;
+    const handed = takeBankPhotos();
+    if (!handed) return;
+    if (handed.accountId) setAcct(handed.accountId);
+    pick(handed.files);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled]);
 
   return (
     <section className="space-y-3">
