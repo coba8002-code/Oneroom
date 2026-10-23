@@ -38,7 +38,7 @@ def fake(monkeypatch):
 
     def install(*responses):
         holder["c"] = FakeClient(*responses)
-        monkeypatch.setattr(svc, "_client", lambda: holder["c"])
+        monkeypatch.setattr(svc, "_client", lambda *_: holder["c"])
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         return holder["c"]
     return install
@@ -53,7 +53,7 @@ def test_not_configured(client, onboarded, monkeypatch):
     st = client.get("/api/v1/assistant/status").json()
     assert st["configured"] is False and st["model"] == svc.MODEL
     res = _ask(client)
-    assert res.status_code == 503 and "ANTHROPIC_API_KEY" in res.json()["detail"]
+    assert res.status_code == 503 and "AI 연결" in res.json()["detail"]
 
 
 def test_tool_loop_returns_answer_with_sources(client, onboarded, fake):

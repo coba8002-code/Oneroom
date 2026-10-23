@@ -24,7 +24,7 @@ class AskIn(BaseModel):
 @router.get("/status")
 def status(member: Member = Depends(org_guard), session: Session = Depends(get_session)) -> dict:
     used = svc.used_today(session, member.organization_id, _today())
-    return {"configured": svc.configured(), "model": svc.MODEL, "daily_limit": svc.DAILY_LIMIT,
+    return {"configured": svc.configured(session, member.organization_id), "model": svc.MODEL, "daily_limit": svc.DAILY_LIMIT,
             "remaining_today": max(0, svc.DAILY_LIMIT - used)}
 
 

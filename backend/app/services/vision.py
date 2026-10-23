@@ -40,8 +40,8 @@ class NotConfigured(VisionError):
     pass
 
 
-def configured() -> bool:
-    return assistant.configured()
+def configured(session: Session | None = None, org: uuid.UUID | None = None) -> bool:
+    return assistant.configured(session, org)
 
 
 def _nullable(kind: str, desc: str) -> dict:
@@ -93,7 +93,9 @@ UNITS_PROMPT = COMMON + """
 할 일: 임대차 계약서, 호실·임차인 목록, 임대관리 앱 화면 캡처에서 '호실별 계약' 한 줄씩 뽑습니다.
 - 한 호실은 한 줄. 같은 호실이 여러 사진에 나오면 한 줄로 합칩니다 (값이 서로 다르면 notes 에 적고 null).
 - 계약서 한 장이면 보통 한 줄입니다. 공인중개사·임대인 정보는 뽑지 않습니다.
-- 공실로 표시된 호실은 unit_no 만 적고 나머지는 null."""
+- 공실로 표시된 호실은 unit_no 만 적고 나머지는 null.
+- 임대관리 앱(예: 자리톡) 호실 화면: 펼쳐진 계약(월임대료·보증금·납부일이 보이는 것)만 한 줄로. 접혀서 기간만 보이는
+  다음 계약은 줄로 만들지 말고 notes 에 '○호 다음 계약(기간) 금액 안 보임'으로 적습니다. '전세'면 rent 는 0."""
 
 BANK_PROMPT = COMMON + """
 할 일: 은행 앱·인터넷뱅킹 거래내역 캡처나 통장 사진에서 거래를 한 줄씩 옮깁니다.
@@ -222,9 +224,9 @@ def read(session: Session, org: uuid.UUID, user_id, kind: str, files: list[tuple
         raise VisionError("알 수 없는 판독 종류입니다")
     check_files(files)
     if client is None:
-        if not configured():
-            raise NotConfigured("사진 판독이 아직 연결되지 않았습니다. 서버 환경변수 ANTHROPIC_API_KEY 를 넣어 주세요")
-        client = assistant._client()
+        if not (key := assistant.api_key(session, org)):
+            raise NotConfigured("사진 판독이 아직 연결되지 않았습니다. 설정 → 'AI 연결'에서 Claude API 키를 넣어 주세요")
+        client = assistant._client(key)
     if used_today(session, org, today) >= DAILY_LIMIT:
         raise VisionError(f"오늘 사진 판독 한도({DAILY_LIMIT}회)를 다 썼습니다. 내일 다시 이용해 주세요")
     prompt, fields, clean = (UNITS_PROMPT, UNIT_FIELDS, clean_units) if kind == "units" \

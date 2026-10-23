@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import AuditLog, Lease, Property, Unit
+from app.models import AuditLog, Lease, OrgApiKey, Property, Unit
 from app.services import dashboard, fixtures, receivables, reports, routines, tax_prep, vacancy
 
 KST = ZoneInfo("Asia/Seoul")
@@ -80,14 +80,24 @@ class NotConfigured(AssistantError):
     pass
 
 
-def configured() -> bool:
-    return bool(os.getenv("ANTHROPIC_API_KEY"))
+def api_key(session: Session | None = None, org: uuid.UUID | None = None) -> str | None:
+    """서버 환경변수가 우선, 없으면 사업장이 설정 화면에서 넣은 키 (services/ai_keys)."""
+    if env := os.getenv("ANTHROPIC_API_KEY"):
+        return env
+    if session is None or org is None:
+        return None
+    return session.scalar(select(OrgApiKey.key).where(OrgApiKey.organization_id == org,
+                                                      OrgApiKey.provider == "anthropic"))
 
 
-def _client():
+def configured(session: Session | None = None, org: uuid.UUID | None = None) -> bool:
+    return bool(api_key(session, org))
+
+
+def _client(key: str | None = None):
     import anthropic  # 키가 없으면 불러오지도 않는다
 
-    return anthropic.Anthropic(timeout=50.0, max_retries=1)  # Vercel 함수 60초 안에서 끝나게
+    return anthropic.Anthropic(api_key=key, timeout=50.0, max_retries=1)  # Vercel 함수 60초 안에서 끝나게
 
 
 # ── 도구 (읽기 전용, 이름·연락처 없음) ──────────────────────────────
@@ -215,9 +225,9 @@ def ask(session: Session, org: uuid.UUID, user_id, question: str, history: list[
     if len(question) > MAX_QUESTION:
         raise AssistantError(f"질문은 {MAX_QUESTION}자 이하로 적어 주세요")
     if client is None:
-        if not configured():
-            raise NotConfigured("AI 비서가 아직 연결되지 않았습니다. 서버 환경변수 ANTHROPIC_API_KEY 를 넣어 주세요 (설정 → AI 비서 안내)")
-        client = _client()
+        if not (key := api_key(session, org)):
+            raise NotConfigured("AI 비서가 아직 연결되지 않았습니다. 설정 → 'AI 연결'에서 Claude API 키를 넣어 주세요")
+        client = _client(key)
     if used_today(session, org, today) >= DAILY_LIMIT:
         raise AssistantError(f"오늘 질문 한도({DAILY_LIMIT}회)를 다 썼습니다. 내일 다시 이용해 주세요")
 

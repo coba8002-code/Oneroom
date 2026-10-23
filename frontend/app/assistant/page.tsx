@@ -57,8 +57,8 @@ export default function AssistantPage() {
       {status && !status.configured && (
         <section className="card space-y-1 p-4 text-sm">
           <p className="font-medium">아직 연결되지 않았습니다.</p>
-          <p className="text-slate-600">서버(Vercel API 프로젝트) 환경변수에 <code className="rounded bg-slate-100 px-1">ANTHROPIC_API_KEY</code>를 넣고 다시 배포하면 켜집니다.
-            키는 console.anthropic.com → API Keys에서 만듭니다. 키를 채팅이나 화면에 붙여 넣지 마세요.</p>
+          <p className="text-slate-600"><a href="/settings#ai-key" className="underline">설정 → AI 연결</a>에서 대표가 Claude API 키를 넣으면 바로 켜집니다
+            (키는 console.anthropic.com → API Keys에서 만듭니다). 키를 채팅이나 메시지에 붙여 넣지 마세요.</p>
         </section>
       )}
 
