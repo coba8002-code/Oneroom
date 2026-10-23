@@ -374,3 +374,44 @@ test("임대사업자: 건물 전체 등록 → 챙길 일(보증·부기등기)
   await page.setViewportSize({ width: 375, height: 800 });
   await noOverflow(page);
 });
+
+test("사진으로 넣기: 판독 표 확인·고치기 → 빈 호실에 계약 넣기 · 통장 줄 넣기 (AI 응답은 가짜)", async ({ page }) => {
+  const org = await signupAndOnboard(page);
+  // 실제 AI 대신 정해진 판독 결과 — 화면 흐름과 '넣기'(실제 API)를 확인한다
+  await page.route("**/api/v1/vision/status", (r) => r.fulfill({ json: { configured: true, daily_limit: 30, max_files: 5, used_today: 0 } }));
+  await page.route("**/api/v1/vision/units", (r) => r.fulfill({ json: { remaining_today: 29, notes: ["2번째 사진 흐림"], rows: [
+    { unit_no: "203", tenant_name: "새임차인", tenant_phone: null, deposit: 3000000, rent: 430000, mgmt_fee: null, due_day: null,
+      start_date: "2026-11-01", end_date: "2028-10-31", signed_on: null, deposit_received_on: null, evidence: "사진 1 계약서" },
+    { unit_no: "101", tenant_name: "임차인A", tenant_phone: null, deposit: 5000000, rent: 450000, mgmt_fee: null, due_day: 1,
+      start_date: "2025-03-01", end_date: null, signed_on: null, deposit_received_on: null, evidence: "사진 2" },
+  ] } }));
+  await page.route("**/api/v1/vision/bank", (r) => r.fulfill({ json: { remaining_today: 28, notes: [], rows: [
+    { date: "2026-11-02", time: "10:15", direction: "in", amount: 430000, counterparty: "새임차인", description: "인터넷", balance_after: 1430000 },
+    { date: "2026-11-03", time: null, direction: null, amount: 55000, counterparty: "관리업체", description: null, balance_after: null },
+  ] } }));
+
+  await page.goto("/smart-import");
+  await page.getByLabel(/계약서·호실 목록·앱 캡처 사진 고르기/).setInputFiles({ name: "c.png", mimeType: "image/png", buffer: Buffer.from("x") });
+  await expect(page.getByText("2줄을 읽었습니다.", { exact: false })).toBeVisible();
+  await expect(page.getByText("2번째 사진 흐림")).toBeVisible();
+  const row203 = page.locator("tbody tr").first();
+  await expect(row203).toContainText("임차인·월세·납부일·시작일 필요");  // 납부일을 못 읽음 → 비워 둠
+  await row203.getByLabel("납부일").fill("10");
+  await expect(page.locator("tbody tr").nth(1)).toContainText("이미 계약 중인 호실");
+  await page.getByRole("button", { name: "확인한 1건 계약 넣기" }).click();
+  await expect(page.getByText("계약 1건을 넣었습니다.")).toBeVisible();
+  await expect(row203).toContainText("넣음");
+  const leases = await api(page, "GET", `/api/v1/leases?organization_id=${org}`);
+  expect(leases.find((l: { unit_no: string }) => l.unit_no === "203")).toBeTruthy();
+
+  await page.getByRole("tab", { name: "통장 내역" }).click();
+  await page.getByLabel(/거래내역 캡처 고르기/).setInputFiles({ name: "b.png", mimeType: "image/png", buffer: Buffer.from("x") });
+  await expect(page.getByRole("button", { name: "확인한 1건 통장 내역에 넣기" })).toBeVisible();  // 구분 모르는 줄은 제외
+  await page.locator("tbody tr").nth(1).getByLabel("구분").selectOption("out");
+  await page.locator("tbody tr").nth(1).getByLabel(/번째 거래 넣기/).check();
+  await expect(page.getByText(/잔액이 비어 있는 줄은/)).toBeVisible();
+  await page.getByRole("button", { name: "확인한 2건 통장 내역에 넣기" }).click();
+  await expect(page.getByText(/새 거래 2건 · 이미 있던 거래 0건/)).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 800 });
+  await noOverflow(page);
+});

@@ -231,8 +231,47 @@ def fingerprints(rows: list[ParsedRow]) -> list[str]:
 
 
 def import_transactions(session: Session, account: BankAccount, filename: str, raw: bytes) -> ImportOut:
-    batch = uuid.uuid4().hex
     parsed, errors, total = parse_rows(read_table(filename, raw))
+    return _import(session, account, parsed, errors, total, filename.rsplit(".", 1)[-1].lower())
+
+
+PHOTO_HEADER = ["거래일자", "거래시간", "적요", "기재내용", "출금금액", "입금금액", "잔액"]
+
+
+def import_rows(session: Session, account: BankAccount, rows: list[dict]) -> ImportOut:
+    """사진에서 읽고 관리자가 확인한 거래 줄 → 파일과 같은 규칙으로 넣는다 (같은 검사·중복 방지)."""
+    table: list[list] = [PHOTO_HEADER]
+    for r in rows:
+        amount = r.get("amount")
+        table.append([r.get("date"), r.get("time"), r.get("description"), r.get("counterparty"),
+                      amount if r.get("direction") == "out" else None, amount if r.get("direction") == "in" else None,
+                      r.get("balance_after")])
+    parsed, errors, total = parse_rows(table)
+    return _import(session, account, parsed, errors, total, "photo")
+
+
+def _same_balance(session: Session, account_id: uuid.UUID, r: ParsedRow) -> bool:
+    """잔액이 같은 같은 거래가 이미 있나 — 사진 판독과 파일이 적요 글자만 다르게 읽은 경우를 막는다.
+    잔액은 거래마다 바뀌므로 (시각·방향·금액·잔액)이 모두 같으면 같은 거래다."""
+    if r.balance_after is None:
+        return False
+    local = r.occurred_at.astimezone(KST)
+    day = datetime.combine(local.date(), time(), KST).astimezone(timezone.utc)
+    q = select(Transaction.occurred_at).where(
+        Transaction.bank_account_id == account_id, Transaction.direction == r.direction,
+        Transaction.amount == r.amount, Transaction.balance_after == r.balance_after,
+        Transaction.occurred_at >= day, Transaction.occurred_at < day + timedelta(days=1))
+    # 한쪽이 날짜만(자정) 있으면 그날 안에서, 둘 다 시각이 있으면 분 단위까지 같아야
+    for t in session.scalars(q):
+        tl = t.astimezone(KST)
+        if local.time() == time() or tl.time() == time() or (tl.hour, tl.minute) == (local.hour, local.minute):
+            return True
+    return False
+
+
+def _import(session: Session, account: BankAccount, parsed: list[tuple[int, ParsedRow]], errors: list[RowError],
+            total: int, file_type: str) -> ImportOut:
+    batch = uuid.uuid4().hex
     fps = fingerprints([p for _, p in parsed])
 
     existing = set(session.scalars(
@@ -248,6 +287,9 @@ def import_transactions(session: Session, account: BankAccount, filename: str, r
             duplicates += 1
             continue
         existing.add(fp)  # 같은 파일 안 거래고유번호 중복도 방어
+        if _same_balance(session, account.id, r):
+            duplicates += 1
+            continue
         if alert := _alert_twin(session, account.id, r, used):
             used.add(alert.id)
             alert.occurred_at, alert.description, alert.counterparty = r.occurred_at, r.description, r.counterparty
@@ -273,7 +315,7 @@ def import_transactions(session: Session, account: BankAccount, filename: str, r
             Transaction.occurred_at >= first, Transaction.occurred_at < last)).all())
     session.add(AuditLog(
         action="transactions.import", entity_type="bank_account", entity_id=str(account.id),
-        detail={"batch": batch, "file_type": filename.rsplit(".", 1)[-1].lower(), "total": total,
+        detail={"batch": batch, "file_type": file_type, "total": total,
                 "inserted": inserted, "duplicates": duplicates, "errors": len(errors),
                 "merged_alerts": merged, "alerts_without_statement": leftover},
     ))
