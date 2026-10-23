@@ -30,7 +30,7 @@ def fake(monkeypatch):
 
     def install(payload, stop="end_turn"):
         holder["c"] = FakeClient(payload, stop)
-        monkeypatch.setattr(assistant, "_client", lambda: holder["c"])
+        monkeypatch.setattr(assistant, "_client", lambda *_: holder["c"])
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         return holder["c"]
     return install
@@ -54,7 +54,7 @@ def test_not_configured(client, onboarded, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     assert client.get("/api/v1/vision/status").json()["configured"] is False
     res = _post(client, "units")
-    assert res.status_code == 503 and "ANTHROPIC_API_KEY" in res.json()["detail"]
+    assert res.status_code == 503 and "AI 연결" in res.json()["detail"]
 
 
 def test_units_rows_cleaned_and_not_saved(client, onboarded, fake, session):
@@ -137,3 +137,58 @@ def test_file_after_photo_dedupes_by_balance(client, onboarded, session):
     res = client.post(f"/api/v1/bank-accounts/{acct}/import", files={"file": ("w.csv", csv, "text/csv")}).json()
     assert (res["inserted"], res["duplicates"]) == (1, 1)
     assert session.scalar(select(func.count()).select_from(Transaction).where(Transaction.amount == 420_000)) == 2
+
+
+# ── 무료 판독 (브라우저 글자 인식 → 규칙) ──
+
+BANK_TABLE = """거래내역조회 2026.10.01 ~ 2026.10.31
+거래일시 적요 기재내용 출금금액 입금금액 잔액
+2026.10.03 14:20:41 인터넷 임차인C 0원 420,000원 2,000,000원
+2026.10.05 09:01 타행CD 관리업체 55,000원 0원 1,945,000원
+"""
+BANK_APP = """2026년 10월 16일 10:15
+입금 김동수
+450,000원
+잔액 1,450,000원
+2026.10.17
+출금 한전
+32,100원
+"""
+
+
+def test_free_bank_table_and_app_text(client, onboarded):
+    res = client.post("/api/v1/vision/parse-text", json={"kind": "bank", "text": BANK_TABLE}).json()
+    assert res["mode"] == "free"
+    a, b = res["rows"]
+    assert (a["date"], a["time"], a["direction"], a["amount"], a["balance_after"]) == ("2026-10-03", "14:20:41", "in", 420_000, 2_000_000)
+    assert a["counterparty"] == "임차인C" and a["description"] == "인터넷"
+    assert (b["direction"], b["amount"], b["balance_after"], b["time"]) == ("out", 55_000, 1_945_000, "09:01")
+
+    rows = client.post("/api/v1/vision/parse-text", json={"kind": "bank", "text": BANK_APP}).json()["rows"]
+    assert [(r["date"], r["direction"], r["amount"], r["balance_after"]) for r in rows] == [
+        ("2026-10-16", "in", 450_000, 1_450_000), ("2026-10-17", "out", 32_100, None)]
+    assert rows[0]["counterparty"] == "김동수"
+
+
+def test_free_bank_without_year_is_not_guessed(client, onboarded):
+    res = client.post("/api/v1/vision/parse-text", json={"kind": "bank", "text": "10.16 입금 김동수 450,000원"}).json()
+    assert res["rows"] == [] and "연도" in res["notes"][-1]
+
+
+def test_free_contract_text(client, onboarded):
+    text = ("부동산(주택) 임대차 계약서 소재지 행복빌라 203호 보증금 금 오백만원정 (₩5,000,000) "
+            "차임 금 사십오만원정은 매월 5일에 지불한다. 임대차기간 2026년 11월 1일부터 2028년 10월 31일까지 임대인 홍길동")
+    row = client.post("/api/v1/vision/parse-text", json={"kind": "units", "text": text}).json()["rows"][0]
+    assert (row["unit_no"], row["deposit"], row["rent"], row["due_day"]) == ("203", 5_000_000, 450_000, 5)
+    assert (row["start_date"], row["end_date"], row["tenant_name"]) == ("2026-11-01", "2028-10-31", None)
+
+
+def test_free_bank_survives_real_ocr_noise(client, onboarded):
+    """실제 Tesseract 결과(쉼표·점 빠짐, 원 누락, 깨진 잔액)에서도 확실한 값만 채운다."""
+    ocr = ("거래내역조회\n2026.10.03 14:20:41 인터넷 임차인6\n0원 _ 420,000원 2,000,000\n"
+           "2026.10.05 09:01 타행 관리업체\n55,000원 _ 0원 . 1945,000원\n"
+           "202610.16 10:15 입금 김동수\n450,000원 잔액 2 395 0008\n")
+    rows = client.post("/api/v1/vision/parse-text", json={"kind": "bank", "text": ocr}).json()["rows"]
+    assert [(r["date"], r["direction"], r["amount"], r["balance_after"]) for r in rows] == [
+        ("2026-10-03", "in", 420_000, 2_000_000), ("2026-10-05", "out", 55_000, 1_945_000),
+        ("2026-10-16", "in", 450_000, None)]  # 깨진 잔액은 비움

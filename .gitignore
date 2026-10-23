@@ -17,3 +17,6 @@ deploy/.env
 e2e/node_modules/
 e2e/test-results/
 e2e/playwright-report/
+
+# 무료 판독 엔진·언어 데이터 (빌드 때 node_modules 에서 복사)
+frontend/public/ocr/

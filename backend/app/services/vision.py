@@ -40,8 +40,8 @@ class NotConfigured(VisionError):
     pass
 
 
-def configured() -> bool:
-    return assistant.configured()
+def configured(session: Session | None = None, org: uuid.UUID | None = None) -> bool:
+    return assistant.configured(session, org)
 
 
 def _nullable(kind: str, desc: str) -> dict:
@@ -222,9 +222,9 @@ def read(session: Session, org: uuid.UUID, user_id, kind: str, files: list[tuple
         raise VisionError("알 수 없는 판독 종류입니다")
     check_files(files)
     if client is None:
-        if not configured():
-            raise NotConfigured("사진 판독이 아직 연결되지 않았습니다. 서버 환경변수 ANTHROPIC_API_KEY 를 넣어 주세요")
-        client = assistant._client()
+        if not (key := assistant.api_key(session, org)):
+            raise NotConfigured("사진 판독이 아직 연결되지 않았습니다. 설정 → 'AI 연결'에서 Claude API 키를 넣어 주세요")
+        client = assistant._client(key)
     if used_today(session, org, today) >= DAILY_LIMIT:
         raise VisionError(f"오늘 사진 판독 한도({DAILY_LIMIT}회)를 다 썼습니다. 내일 다시 이용해 주세요")
     prompt, fields, clean = (UNITS_PROMPT, UNIT_FIELDS, clean_units) if kind == "units" \

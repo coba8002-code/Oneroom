@@ -2,6 +2,7 @@
 
 import {
   ArchiveRestore,
+  Bot,
   LockKeyhole,
   Smartphone,
   UserRound,
@@ -87,6 +88,7 @@ export default function SettingsPage() {
         {isOwner && orgs && orgs.length > 0 && <ExportCard orgId={orgId} lastBackup={lastBackup} onDone={reload} />}
         {isOwner && <RestoreCard direct={direct} onDone={reload} />}
         <ServerBackupCard />
+        <AiKeyCard isOwner={isOwner} />
         <OcrCard configured={ocr} />
         {orgId && <BankAlertCard orgId={orgId} canWrite={me?.user.role !== "viewer"} />}
       </div>
@@ -339,6 +341,57 @@ function OcrCard({ configured }: { configured: boolean | null }) {
           <code className="rounded bg-slate-100 px-1">ROOMAX_CLOVA_OCR_SECRET</code> 를 채우고 재시작하세요.
         </p>
       )}
+    </section>
+  );
+}
+
+interface AiKey { configured: boolean; source: "server" | "organization" | null; last4: string | null; set_at: string | null }
+
+function AiKeyCard({ isOwner }: { isOwner: boolean }) {
+  const [k, setK] = useState<AiKey | null>(null);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [m, setM] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => { api<AiKey>("/api/v1/settings/ai-key").then(setK).catch(() => setK(null)); }, []);
+  const send = async (method: "PUT" | "DELETE") => {
+    setBusy(true); setM(null);
+    try {
+      const out = await api<AiKey>("/api/v1/settings/ai-key", method === "PUT"
+        ? { method, headers: { "content-type": "application/json" }, body: JSON.stringify({ key: value }) } : { method });
+      setK(out); setValue("");
+      setM({ ok: true, text: method === "PUT" ? "키를 확인하고 저장했습니다. 사진으로 넣기·AI 비서를 바로 쓸 수 있습니다." : "키를 지웠습니다." });
+    } catch (e) { setM({ ok: false, text: (e as Error).message }); }
+    setBusy(false);
+  };
+  return (
+    <section id="ai-key" className="card p-5">
+      <CardHead icon={Bot} title="AI 연결 (Claude API 키)" sub="사진으로 넣기(AI 판독)·AI 비서에 씁니다. 무료 판독은 키 없이도 됩니다." />
+      {k == null ? <p className="text-sm text-slate-500">확인 중…</p> : k.source === "server" ? (
+        <p className="flex items-center gap-2 text-sm text-emerald-700"><CheckCircle2 className="h-4 w-4" /> 서버 설정의 키로 연결됨</p>
+      ) : k.configured ? (
+        <p className="flex items-center gap-2 text-sm text-emerald-700"><CheckCircle2 className="h-4 w-4" /> 연결됨 · sk-ant-…{k.last4}
+          {k.set_at && <span className="text-xs text-slate-500">({kst(k.set_at)} 저장)</span>}</p>
+      ) : <p className="text-sm text-slate-600">아직 연결되지 않았습니다.</p>}
+      {isOwner && k?.source !== "server" && (
+        <div className="mt-3 space-y-2 text-sm">
+          <ol className="list-decimal space-y-0.5 pl-5 text-xs text-slate-600">
+            <li><a className="underline" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">Anthropic 콘솔 → API Keys</a>에서 <b>Create Key</b> (결제 수단 등록 필요, 사용한 만큼 과금)</li>
+            <li>나온 키(sk-ant-…)를 복사해 아래에 붙여 넣고 <b>확인·저장</b></li>
+          </ol>
+          <label className="block text-xs text-slate-600">Claude API 키
+            <input type="password" autoComplete="off" spellCheck={false} className="field mt-1 w-full" placeholder="sk-ant-..." value={value}
+              onChange={(e) => setValue(e.target.value)} /></label>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-primary btn-sm" disabled={busy || !value.trim()} onClick={() => send("PUT")}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}확인·저장</button>
+            {k?.configured && <button type="button" className="btn-secondary btn-sm" disabled={busy}
+              onClick={() => window.confirm("저장한 키를 지울까요? AI 판독·AI 비서가 꺼집니다.") && send("DELETE")}><Trash2 className="h-3.5 w-3.5" />키 지우기</button>}
+          </div>
+          <p className="text-xs text-slate-500">키는 암호화해 보관하고 끝 4자리만 보여 줍니다. 백업 파일에는 넣지 않습니다(복구 뒤 다시 입력). 대표만 바꿀 수 있습니다.</p>
+        </div>
+      )}
+      {!isOwner && k && !k.configured && <p className="mt-2 text-xs text-slate-500">키는 사업장 대표가 넣을 수 있습니다.</p>}
+      <Msg m={m} />
     </section>
   );
 }

@@ -415,3 +415,34 @@ test("사진으로 넣기: 판독 표 확인·고치기 → 빈 호실에 계약
   await page.setViewportSize({ width: 375, height: 800 });
   await noOverflow(page);
 });
+
+test("무료 판독: 키 없이 이 기기에서 통장 캡처 글자 인식 → 표 → 넣기", async ({ page }) => {
+  test.setTimeout(150_000);  // 첫 인식은 엔진·한국어 데이터를 받느라 오래 걸린다
+  await signupAndOnboard(page);
+  await page.goto("/smart-import");
+  await expect(page.getByRole("button", { name: "무료 판독 (이 기기 안에서)" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /AI 판독/ })).toBeDisabled();  // 키 없음
+  await page.getByRole("tab", { name: "통장 내역" }).click();
+  await page.getByLabel(/거래내역 캡처 고르기/).setInputFiles(`${__dirname}/../fixtures/bank-capture.png`);
+  await expect(page.getByText(/건을 읽었습니다/)).toBeVisible({ timeout: 120_000 });
+  const first = page.locator("tbody tr").first();
+  await expect(first.getByLabel("날짜")).toHaveValue("2026-10-03");
+  await expect(first.getByLabel("금액")).toHaveValue("420000");
+  await page.getByRole("button", { name: /통장 내역에 넣기/ }).click();
+  await expect(page.getByText(/새 거래 3건/)).toBeVisible();
+});
+
+test("설정 → AI 연결: 대표가 키를 넣으면 끝 4자리만 보이고 사진 판독이 AI 로 켜짐 (Anthropic 확인은 가짜)", async ({ page }) => {
+  await signupAndOnboard(page);
+  // 실제 Anthropic 확인 대신 저장 결과만 흉내 — 화면 흐름 확인용
+  await page.route("**/api/v1/settings/ai-key", (r) => r.request().method() === "PUT"
+    ? r.fulfill({ json: { configured: true, source: "organization", last4: "AB12", set_at: "2026-10-23T06:00:00Z" } })
+    : r.fulfill({ json: { configured: false, source: null, last4: null, set_at: null } }));
+  await page.goto("/settings#ai-key");
+  const card = page.locator("#ai-key");
+  await expect(card.getByText("아직 연결되지 않았습니다.")).toBeVisible();
+  await card.getByLabel("Claude API 키").fill("sk-ant-api03-test-key-AB12");
+  await card.getByRole("button", { name: "확인·저장" }).click();
+  await expect(card.getByText(/연결됨 · sk-ant-…AB12/)).toBeVisible();
+  await expect(card.getByLabel("Claude API 키")).toHaveValue("");  // 입력칸에 남기지 않음
+});

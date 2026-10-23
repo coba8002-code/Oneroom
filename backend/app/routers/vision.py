@@ -11,7 +11,7 @@ from app.db import get_session
 from app.models import BankAccount
 from app.routers.assets import _today
 from app.schemas import ImportOut
-from app.services import vision
+from app.services import text_parse, vision
 from app.services.bank_import import import_rows
 
 router = APIRouter(prefix="/api/v1", tags=["vision"])
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/v1", tags=["vision"])
 
 @router.get("/vision/status")
 def status(member: Member = Depends(org_guard), session: Session = Depends(get_session)) -> dict:
-    return {"configured": vision.configured(), "daily_limit": vision.DAILY_LIMIT, "max_files": vision.MAX_FILES,
+    return {"configured": vision.configured(session, member.organization_id), "daily_limit": vision.DAILY_LIMIT, "max_files": vision.MAX_FILES,
             "used_today": vision.used_today(session, member.organization_id, _today())}
 
 
@@ -49,6 +49,23 @@ async def read_units(files: list[UploadFile] = File(...), member: Member = Depen
 async def read_bank(files: list[UploadFile] = File(...), member: Member = Depends(org_guard),
                     session: Session = Depends(get_session)) -> dict:
     return _read(session, member, "bank", await _files(files))
+
+
+class TextIn(BaseModel):
+    kind: str = Field(pattern="^(units|bank)$")
+    text: str = Field(max_length=50_000)
+
+
+@router.post("/vision/parse-text")
+def parse_text(body: TextIn, member: Member = Depends(org_guard)) -> dict:
+    """무료 판독: 브라우저가 사진에서 읽은 글자 → 규칙으로 표. AI·외부 전송 없음, 저장 없음."""
+    if body.kind == "units":
+        rows, notes = text_parse.parse_units(body.text)
+        rows, more = vision.clean_units(rows)
+    else:
+        rows, notes = text_parse.parse_bank(body.text)
+        rows, more = vision.clean_bank(rows)
+    return {"kind": body.kind, "mode": "free", "rows": rows, "notes": notes + [n for n in more if n not in notes]}
 
 
 class BankRowIn(BaseModel):

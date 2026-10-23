@@ -759,6 +759,20 @@ class RentalGuarantee(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+class OrgApiKey(Base):
+    """사업장이 화면에서 넣은 외부 API 키 (지금은 Anthropic 하나). 암호화 저장, 화면에는 끝 4자리만.
+    비밀값이라 백업에 넣지 않는다 (backup.EXCLUDED) — 복구 뒤에는 다시 넣는다. 서버 환경변수가 있으면 그쪽이 우선."""
+    __tablename__ = "org_api_keys"
+    __table_args__ = (UniqueConstraint("organization_id", "provider"),)
+    id: Mapped[uuid.UUID] = pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(20))  # anthropic
+    key: Mapped[str] = mapped_column(EncryptedString())
+    last4: Mapped[str] = mapped_column(String(4))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = created_at()
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id: Mapped[uuid.UUID] = pk()

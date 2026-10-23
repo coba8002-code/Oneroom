@@ -4,6 +4,7 @@ import { Camera, FileText, Landmark, Sparkles, Upload } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, won } from "@/lib/api";
+import { recognizeText } from "@/lib/freeOcr";
 import { shrinkImage } from "@/lib/image";
 import { useMe } from "@/lib/me";
 
@@ -13,7 +14,8 @@ interface UnitRow { unit_no: string | null; tenant_name: string | null; tenant_p
   signed_on: string | null; deposit_received_on: string | null; evidence: string | null }
 interface BankRow { date: string | null; time: string | null; direction: "in" | "out" | null; amount: number | null;
   counterparty: string | null; description: string | null; balance_after: number | null }
-interface ReadOut<T> { rows: T[]; notes: string[]; remaining_today: number }
+interface ReadOut<T> { rows: T[]; notes: string[]; remaining_today?: number }
+type Mode = "ai" | "free";
 interface UnitH { unit_id: string; unit_no: string; use_type: string; status: string; leases: { status: string }[] }
 interface Account { id: string; alias: string }
 
@@ -21,7 +23,11 @@ const json = (method: string, body: unknown) => ({ method, headers: { "content-t
 const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[^\d]/g, "")));
 const txt = (v: string) => (v.trim() === "" ? null : v);
 
-async function readPhotos<T>(kind: "units" | "bank", files: FileList): Promise<ReadOut<T>> {
+async function readPhotos<T>(kind: "units" | "bank", files: FileList, mode: Mode): Promise<ReadOut<T>> {
+  if (mode === "free") {
+    const text = await recognizeText(Array.from(files));
+    return api<ReadOut<T>>("/api/v1/vision/parse-text", json("POST", { kind, text }));
+  }
   const form = new FormData();
   for (const f of Array.from(files)) form.append("files", await shrinkImage(f));
   return api<ReadOut<T>>(`/api/v1/vision/${kind}`, { method: "POST", body: form });
@@ -33,6 +39,8 @@ export default function SmartImportPage() {
   const [st, setSt] = useState<Status | null>(null);
   const [tab, setTab] = useState<"units" | "bank">("units");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [choice, setChoice] = useState<Mode | null>(null);
+  const mode: Mode = choice ?? (st?.configured ? "ai" : "free");
   const loadStatus = useCallback(() => api<Status>("/api/v1/vision/status").then(setSt).catch((e) => setMsg({ ok: false, text: e.message })), []);
   useEffect(() => { loadStatus(); }, [loadStatus]);
 
@@ -40,17 +48,27 @@ export default function SmartImportPage() {
     <div className="space-y-5">
       <header>
         <h1 className="page-title">사진으로 넣기</h1>
-        <p className="page-sub">계약서·호실 목록·임대관리 앱 캡처, 통장 거래내역 캡처를 올리면 AI가 표로 옮겨 적습니다.
+        <p className="page-sub">계약서·임대관리 앱 캡처, 통장 거래내역 캡처를 올리면 표로 옮겨 적습니다.
           표를 확인하고 고친 뒤 <b>넣기</b>를 눌러야 장부에 들어갑니다. 사진은 저장하지 않습니다.</p>
       </header>
       {msg && <p className={`rounded-xl p-3 text-sm ${msg.ok ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-800"}`} role="status">{msg.text}</p>}
-      {st && !st.configured && (
-        <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">사진 판독이 아직 연결되지 않았습니다. 서버(Vercel API 프로젝트) 환경변수에
-          <code className="mx-1">ANTHROPIC_API_KEY</code>를 넣고 다시 배포하면 켜집니다. CSV·엑셀 통장 내역은
-          <Link href="/payments" className="mx-1 underline">임대료 관리</Link>에서 지금도 바로 올릴 수 있습니다.</p>
+      {st && (
+        <section className="card space-y-2 p-3 text-sm" aria-label="판독 방식">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" aria-pressed={mode === "free"} className={mode === "free" ? "btn-primary btn-sm" : "btn-secondary btn-sm"}
+              onClick={() => setChoice("free")}>무료 판독 (이 기기 안에서)</button>
+            <button type="button" aria-pressed={mode === "ai"} disabled={!st.configured} className={mode === "ai" ? "btn-primary btn-sm" : "btn-secondary btn-sm"}
+              onClick={() => setChoice("ai")}><Sparkles className="h-3.5 w-3.5" />AI 판독 (Claude)</button>
+          </div>
+          {mode === "free"
+            ? <p className="text-xs text-slate-600">무료·사진이 기기 밖으로 나가지 않음. 글자만 읽어 규칙으로 나누므로 <b>깨끗한 캡처</b>에 맞고, 표를 꼭 확인하세요.
+              계약서는 한 장씩(보증금·월세·납부일·기간), 통장은 연도까지 보이는 거래만 읽습니다. 처음엔 인식 데이터(약 10MB)를 받아 1분쯤 걸릴 수 있습니다.</p>
+            : <p className="text-xs text-slate-600">오늘 {st.used_today}/{st.daily_limit}회 · 한 번에 {st.max_files}장(합쳐 4MB). 표·여러 호실 목록까지 정확히 읽습니다.
+              사진 속 이름·연락처는 판독을 위해 Anthropic(미국)으로 전송됩니다(처리방침 국외 이전).</p>}
+          {!st.configured && <p className="text-xs text-slate-500">AI 판독을 쓰려면 <Link href="/settings#ai-key" className="underline">설정 → AI 연결</Link>에서 Claude API 키를 넣으세요.
+            통장 CSV·엑셀은 <Link href="/payments" className="underline">임대료 관리</Link>에서 바로 올리는 것이 가장 정확합니다.</p>}
+        </section>
       )}
-      {st?.configured && <p className="text-xs text-slate-500">오늘 {st.used_today}/{st.daily_limit}회 사용 · 한 번에 {st.max_files}장(합쳐 4MB)까지.
-        사진 속 이름·연락처는 판독을 위해 Anthropic(미국)으로 전송됩니다(처리방침 국외 이전).</p>}
       <div className="flex gap-2" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "units"} className={tab === "units" ? "btn-primary btn-sm" : "btn-secondary btn-sm"}
           onClick={() => setTab("units")}><FileText className="h-3.5 w-3.5" />계약·호실</button>
@@ -58,18 +76,18 @@ export default function SmartImportPage() {
           onClick={() => setTab("bank")}><Landmark className="h-3.5 w-3.5" />통장 내역</button>
       </div>
       {tab === "units"
-        ? <UnitsTab enabled={!!st?.configured && canWrite} onMsg={setMsg} onRead={loadStatus} />
-        : <BankTab enabled={!!st?.configured && canWrite} orgId={me?.organization.id ?? ""} onMsg={setMsg} onRead={loadStatus} />}
+        ? <UnitsTab enabled={!!st && canWrite} mode={mode} onMsg={setMsg} onRead={loadStatus} />
+        : <BankTab enabled={!!st && canWrite} mode={mode} orgId={me?.organization.id ?? ""} onMsg={setMsg} onRead={loadStatus} />}
     </div>
   );
 }
 
-function Picker({ enabled, busy, label, onPick }: { enabled: boolean; busy: boolean; label: string; onPick: (f: FileList) => void }) {
+function Picker({ enabled, busy, mode, label, onPick }: { enabled: boolean; busy: boolean; mode: Mode; label: string; onPick: (f: FileList) => void }) {
   return (
     <label className={`card flex cursor-pointer flex-col items-center gap-2 border-2 border-dashed p-6 text-center text-sm text-slate-600 ${enabled && !busy ? "" : "pointer-events-none opacity-50"}`}>
       {busy ? <Sparkles className="h-6 w-6 animate-pulse" /> : <Camera className="h-6 w-6" />}
-      <span>{busy ? "AI가 읽는 중… (10~40초)" : label}</span>
-      <input type="file" multiple accept="image/*,application/pdf" className="sr-only" aria-label={label} disabled={!enabled || busy}
+      <span>{busy ? (mode === "ai" ? "AI가 읽는 중… (10~40초)" : "이 기기에서 글자를 읽는 중… (첫 사용은 1분 안팎)") : label}</span>
+      <input type="file" multiple accept={mode === "ai" ? "image/*,application/pdf" : "image/*"} className="sr-only" aria-label={label} disabled={!enabled || busy}
         onChange={(e) => { if (e.target.files?.length) onPick(e.target.files); e.target.value = ""; }} />
     </label>
   );
@@ -84,7 +102,7 @@ function Notes({ notes }: { notes: string[] }) {
 
 type UnitEdit = UnitRow & { unit_id: string; pick: boolean; result?: string };
 
-function UnitsTab({ enabled, onMsg, onRead }: { enabled: boolean; onMsg: (m: { ok: boolean; text: string } | null) => void; onRead: () => void }) {
+function UnitsTab({ enabled, mode, onMsg, onRead }: { enabled: boolean; mode: Mode; onMsg: (m: { ok: boolean; text: string } | null) => void; onRead: () => void }) {
   const [units, setUnits] = useState<UnitH[]>([]);
   const [rows, setRows] = useState<UnitEdit[]>([]);
   const [notes, setNotes] = useState<string[]>([]);
@@ -97,7 +115,7 @@ function UnitsTab({ enabled, onMsg, onRead }: { enabled: boolean; onMsg: (m: { o
   const pick = async (files: FileList) => {
     setBusy(true); onMsg(null);
     try {
-      const [out, list] = await Promise.all([readPhotos<UnitRow>("units", files), api<UnitH[]>("/api/v1/lease-history")]);
+      const [out, list] = await Promise.all([readPhotos<UnitRow>("units", files, mode), api<UnitH[]>("/api/v1/lease-history")]);
       setUnits(list);  // 화면을 연 뒤 바뀐 계약까지 반영해 짝짓기
       const match = (no: string | null) => list.find((u) => no && (u.unit_no === no || u.unit_no.endsWith(` ${no}`) || u.unit_no === no.replace(/호$/, "")))?.unit_id ?? "";
       setRows(out.rows.map((r) => ({ ...r, unit_id: match(r.unit_no), pick: true })));  // 빈 칸을 채워 조건이 맞으면 바로 넣기 대상
@@ -127,7 +145,7 @@ function UnitsTab({ enabled, onMsg, onRead }: { enabled: boolean; onMsg: (m: { o
 
   return (
     <section className="space-y-3">
-      <Picker enabled={enabled} busy={busy} label="계약서·호실 목록·앱 캡처 사진 고르기 (여러 장 가능)" onPick={pick} />
+      <Picker enabled={enabled} busy={busy} mode={mode} label={mode === "ai" ? "계약서·호실 목록·앱 캡처 사진 고르기 (여러 장 가능)" : "계약서 사진 고르기 (한 계약씩)"} onPick={pick} />
       <Notes notes={notes} />
       {rows.length > 0 && (
         <div className="card overflow-x-auto p-3">
@@ -173,7 +191,7 @@ function UnitsTab({ enabled, onMsg, onRead }: { enabled: boolean; onMsg: (m: { o
 
 type BankEdit = BankRow & { pick: boolean };
 
-function BankTab({ enabled, orgId, onMsg, onRead }: { enabled: boolean; orgId: string; onMsg: (m: { ok: boolean; text: string } | null) => void; onRead: () => void }) {
+function BankTab({ enabled, mode, orgId, onMsg, onRead }: { enabled: boolean; mode: Mode; orgId: string; onMsg: (m: { ok: boolean; text: string } | null) => void; onRead: () => void }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [acct, setAcct] = useState("");
   const [rows, setRows] = useState<BankEdit[]>([]);
@@ -187,7 +205,7 @@ function BankTab({ enabled, orgId, onMsg, onRead }: { enabled: boolean; orgId: s
   const pick = async (files: FileList) => {
     setBusy(true); onMsg(null);
     try {
-      const out = await readPhotos<BankRow>("bank", files);
+      const out = await readPhotos<BankRow>("bank", files, mode);
       setRows(out.rows.map((r) => ({ ...r, pick: true })));
       setNotes(out.notes);
       onMsg({ ok: true, text: `${out.rows.length}건을 읽었습니다. 금액·날짜를 사진과 맞춰 본 뒤 넣으세요.` });
@@ -210,7 +228,7 @@ function BankTab({ enabled, orgId, onMsg, onRead }: { enabled: boolean; orgId: s
 
   return (
     <section className="space-y-3">
-      <Picker enabled={enabled} busy={busy} label="은행 앱·인터넷뱅킹 거래내역 캡처 고르기 (여러 장 가능)" onPick={pick} />
+      <Picker enabled={enabled} busy={busy} mode={mode} label="은행 앱·인터넷뱅킹 거래내역 캡처 고르기 (여러 장 가능)" onPick={pick} />
       <p className="text-xs text-slate-500">은행에서 CSV·엑셀을 받을 수 있으면 <Link href="/payments" className="underline">임대료 관리</Link>의 파일 가져오기가 더 정확합니다.
         나중에 같은 기간 파일을 올려도 날짜·시각·금액·잔액이 같은 거래는 한 번만 들어갑니다.</p>
       <Notes notes={notes} />
