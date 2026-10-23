@@ -1,7 +1,9 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useMe } from "@/lib/me";
+import { handOffBankPhotos } from "@/lib/photoHandoff";
 import {
   api,
   todayKst,
@@ -293,6 +295,7 @@ function UnitCard({ row: r, index, onChange, onRemove }: {
 }
 
 function NextSteps({ result }: { result: OnboardingOut }) {
+  const router = useRouter();
   const [period, setPeriod] = useState(thisMonthKst());
   const [charges, setCharges] = useState<ChargeOut[] | null>(null);
   const [imported, setImported] = useState<ImportOut | null>(null);
@@ -307,6 +310,12 @@ function NextSteps({ result }: { result: OnboardingOut }) {
     } catch (e) {
       setError((e as Error).message);
     }
+  }
+
+  function pickBank(files: File[]) {
+    if (!files.length) return;
+    if (handOffBankPhotos(files, result.bank_account_id)) router.push("/smart-import?tab=bank");
+    else importBank(files[0]);
   }
 
   async function importBank(file: File) {
@@ -366,10 +375,11 @@ function NextSteps({ result }: { result: OnboardingOut }) {
         <h2 className="card-title">2. 은행 거래내역 가져오기</h2>
         <p className="text-xs text-slate-500">
           인터넷뱅킹에서 받은 CSV 또는 XLSX. 같은 파일을 다시 올려도 거래가 중복되지 않습니다.
+          파일이 없으면 은행 앱 거래내역 캡처(사진·zip)를 고르세요 — 사진으로 넣기에서 표로 읽어 확인 후 넣습니다.
           입금 매칭은 다음 단계에서 검토 후 확정합니다.
         </p>
-        <input type="file" aria-label="은행 거래내역 파일 (CSV·XLSX)" accept=".csv,.xlsx" className="text-sm"
-          onChange={(e) => e.target.files?.[0] && importBank(e.target.files[0])} />
+        <input type="file" multiple aria-label="은행 거래내역 파일 (CSV·XLSX) 또는 캡처 사진" accept=".csv,.xlsx,image/*,.zip" className="text-sm"
+          onChange={(e) => pickBank(Array.from(e.target.files ?? []))} />
         {imported && (
           <div className="text-sm">
             <p>전체 {imported.total_rows}건 · 새로 저장 <b>{imported.inserted}</b> · 이미 있음 {imported.duplicates}</p>

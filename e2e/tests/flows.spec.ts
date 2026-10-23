@@ -416,14 +416,17 @@ test("사진으로 넣기: 판독 표 확인·고치기 → 빈 호실에 계약
   await noOverflow(page);
 });
 
-test("무료 판독: 키 없이 이 기기에서 통장 캡처 글자 인식 → 표 → 넣기", async ({ page }) => {
+test("무료 판독: CSV 없이 임대료 관리에서 통장 캡처 → 이 기기에서 글자 인식 → 표 → 넣기", async ({ page }) => {
   test.setTimeout(150_000);  // 첫 인식은 엔진·한국어 데이터를 받느라 오래 걸린다
   await signupAndOnboard(page);
   await page.goto("/smart-import");
   await expect(page.getByRole("button", { name: "무료 판독 (이 기기 안에서)" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: /AI 판독/ })).toBeDisabled();  // 키 없음
-  await page.getByRole("tab", { name: "통장 내역" }).click();
-  await page.getByLabel(/거래내역 캡처 고르기/).setInputFiles(`${__dirname}/../fixtures/bank-capture.png`);
+  // CSV 가 없으면 임대료 관리의 파일 칸에서 캡처를 고른다 → 사진으로 넣기(통장 내역)로 넘어가 바로 읽음
+  await page.goto("/payments");
+  await page.getByLabel("파일 선택").setInputFiles(`${__dirname}/../fixtures/bank-capture.png`);
+  await expect(page).toHaveURL(/\/smart-import\?tab=bank/);
+  await expect(page.getByRole("tab", { name: "통장 내역" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText(/건을 읽었습니다/)).toBeVisible({ timeout: 120_000 });
   const first = page.locator("tbody tr").first();
   await expect(first.getByLabel("날짜")).toHaveValue("2026-10-03");
