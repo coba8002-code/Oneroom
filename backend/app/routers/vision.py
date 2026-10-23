@@ -53,17 +53,19 @@ async def read_bank(files: list[UploadFile] = File(...), member: Member = Depend
 
 class TextIn(BaseModel):
     kind: str = Field(pattern="^(units|bank)$")
-    text: str = Field(max_length=50_000)
+    text: str | None = Field(default=None, max_length=50_000)
+    texts: list[str] = Field(default_factory=list, max_length=30)  # 사진마다 읽은 글자 (계약 화면은 사진 하나 = 호실 하나)
 
 
 @router.post("/vision/parse-text")
 def parse_text(body: TextIn, member: Member = Depends(org_guard)) -> dict:
     """무료 판독: 브라우저가 사진에서 읽은 글자 → 규칙으로 표. AI·외부 전송 없음, 저장 없음."""
+    texts = [t[:50_000] for t in body.texts] or [body.text or ""]
     if body.kind == "units":
-        rows, notes = text_parse.parse_units(body.text)
+        rows, notes = text_parse.parse_units_many(texts)
         rows, more = vision.clean_units(rows)
     else:
-        rows, notes = text_parse.parse_bank(body.text)
+        rows, notes = text_parse.parse_bank("\n".join(texts))
         rows, more = vision.clean_bank(rows)
     return {"kind": body.kind, "mode": "free", "rows": rows, "notes": notes + [n for n in more if n not in notes]}
 

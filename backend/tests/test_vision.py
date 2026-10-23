@@ -192,3 +192,55 @@ def test_free_bank_survives_real_ocr_noise(client, onboarded):
     assert [(r["date"], r["direction"], r["amount"], r["balance_after"]) for r in rows] == [
         ("2026-10-03", "in", 420_000, 2_000_000), ("2026-10-05", "out", 55_000, 1_945_000),
         ("2026-10-16", "in", 450_000, None)]  # 깨진 잔액은 비움
+
+
+# 자리톡 호실 계약 화면을 실제 Tesseract 로 읽었을 때와 같은 모양 (이름·번호는 가짜)
+JARITALK_304 = """수정/삭제 X
+304=
+대동로8길 3-6
+계약/수납 호실 메모
+계약 내역 2개 + 신규 세입자 등록
+@ out 304호 홍길동 접기 a
+연장 퇴거 수정 삭제
+임대유형 _ 월세 선불 월임대료 35만원
+보증금 _ _300만원 월관리비 10만원
+남부일 _ 매달 6일 부가세액 0만원
+남부층액 _ 45만원
+연락처 010-1234-5678 。._\\% 통화 = 2X
+계약기간 2026.02.06 ~ 2027.02.05
+"""
+JARITALK_301 = """수정/삭제 X
+3022
+대동로8길 3-6
+계약/수납 호실 메모
+9) 김갑순 2026.11~ 202710 (9일후) 펼치기
+© 김갑순 만료 7일 전 HIN
+연장 퇴거 수정 삭제
+임대유형 _ 월세 선불 HUE _36만원
+보증금 300만원 킬관리비 - 9만원
+남부일 _ 매달 31일 부가세액 ote
+연락처 _ 010-9876-5432 WL 통화
+계약기간 2026.02.10 ~ 2026.10.30
+"""
+JARITALK_JEONSE = """101=
+계약/수납 호실 메모
+© 이을동 접기 ㅅ
+연장 퇴거 수정 삭제
+임대유형 전세 월임대료. 0만원
+보증금 _ 3,500만원 월관리비 5만원
+남부일 _ 매달 3일 부가세액 0만원
+계약기간 . 2026.09.06 ~ 2027.09.07
+"""
+
+
+def test_free_jaritalk_screens_one_unit_per_photo(client, onboarded):
+    res = client.post("/api/v1/vision/parse-text", json={"kind": "units", "texts": [JARITALK_304, JARITALK_301, JARITALK_JEONSE]}).json()
+    a, b, c = res["rows"]
+    assert (a["unit_no"], a["tenant_name"], a["tenant_phone"], a["deposit"], a["rent"], a["mgmt_fee"], a["due_day"],
+            a["start_date"], a["end_date"]) == ("304", "홍길동", "010-1234-5678", 3_000_000, 350_000, 100_000, 6,
+                                                "2026-02-06", "2027-02-05")
+    # 펼친 계약(연장 단추 위)만 — 접힌 다음 계약은 읽지 않음, '호'가 숫자로 읽힌 번호는 읽힌 그대로
+    assert (b["unit_no"], b["tenant_name"], b["rent"], b["mgmt_fee"], b["due_day"], b["end_date"]) == (
+        "3022", "김갑순", 360_000, 90_000, 31, "2026-10-30")
+    assert (c["unit_no"], c["tenant_name"], c["deposit"], c["rent"], c["mgmt_fee"], c["tenant_phone"]) == (
+        "101", "이을동", 35_000_000, 0, 50_000, None)

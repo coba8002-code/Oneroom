@@ -42,6 +42,18 @@ class NewLeaseIn(BaseModel):
     deposit_received_on: date | None = None
 
 
+class ReplaceIn(NewLeaseIn):
+    mode: str = Field(pattern="^(end|delete)$")
+
+
+@router.post("/units/{unit_id}/replace-lease", status_code=201)
+def replace_lease(unit_id: uuid.UUID, body: ReplaceIn, member: Member = Depends(org_guard),
+                  session: Session = Depends(get_session)) -> dict:
+    """사진·다른 앱에서 옮겨 온 계약으로 지금 계약을 바꾼다 (종료 후 새 계약 / 잘못 넣은 계약 지우기)."""
+    fields = body.model_dump(exclude={"mode"})
+    return _run(lambda: svc.replace_lease(session, member.organization_id, member.user_id, unit_id, body.mode, **fields))
+
+
 @router.get("/lease-history")
 def lease_history(member: Member = Depends(org_guard), session: Session = Depends(get_session)) -> list[dict]:
     return svc.history(session, member.organization_id)

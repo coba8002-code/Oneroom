@@ -391,15 +391,15 @@ test("사진으로 넣기: 판독 표 확인·고치기 → 빈 호실에 계약
   ] } }));
 
   await page.goto("/smart-import");
-  await page.getByLabel(/계약서·호실 목록·앱 캡처 사진 고르기/).setInputFiles({ name: "c.png", mimeType: "image/png", buffer: Buffer.from("x") });
+  await page.getByLabel(/계약서·호실 목록·임대관리 앱 캡처 고르기/).setInputFiles({ name: "c.png", mimeType: "image/png", buffer: Buffer.from("x") });
   await expect(page.getByText("2줄을 읽었습니다.", { exact: false })).toBeVisible();
   await expect(page.getByText("2번째 사진 흐림")).toBeVisible();
   const row203 = page.locator("tbody tr").first();
   await expect(row203).toContainText("임차인·월세·납부일·시작일 필요");  // 납부일을 못 읽음 → 비워 둠
   await row203.getByLabel("납부일").fill("10");
-  await expect(page.locator("tbody tr").nth(1)).toContainText("이미 계약 중인 호실");
-  await page.getByRole("button", { name: "확인한 1건 계약 넣기" }).click();
-  await expect(page.getByText("계약 1건을 넣었습니다.")).toBeVisible();
+  await expect(page.locator("tbody tr").nth(1)).toContainText("장부와 같아 건너뜀");  // 101호 = 지금 계약과 같음
+  await page.getByRole("button", { name: "확인한 1건 적용" }).click();
+  await expect(page.getByText("계약 1건을 적용했습니다.")).toBeVisible();
   await expect(row203).toContainText("넣음");
   const leases = await api(page, "GET", `/api/v1/leases?organization_id=${org}`);
   expect(leases.find((l: { unit_no: string }) => l.unit_no === "203")).toBeTruthy();
@@ -445,4 +445,25 @@ test("설정 → AI 연결: 대표가 키를 넣으면 끝 4자리만 보이고 
   await card.getByRole("button", { name: "확인·저장" }).click();
   await expect(card.getByText(/연결됨 · sk-ant-…AB12/)).toBeVisible();
   await expect(card.getByLabel("Claude API 키")).toHaveValue("");  // 입력칸에 남기지 않음
+});
+
+test("사진으로 넣기(무료): 자리톡 화면 zip → 호실별 표 → 빈 호실은 새 계약, 계약 중인 호실은 '종료 후 새 계약'으로 바꾸기", async ({ page }) => {
+  test.setTimeout(150_000);
+  await signupAndOnboard(page);
+  await page.goto("/smart-import");
+  await page.getByLabel(/호실 화면 캡처 고르기/).setInputFiles(`${__dirname}/../fixtures/jaritalk-screens.zip`);  // 이름·번호는 가짜
+  await expect(page.getByText(/2줄을 읽었습니다/)).toBeVisible({ timeout: 120_000 });
+  const r203 = page.locator("tbody tr").filter({ has: page.getByLabel("임차인").and(page.locator('[value="홍길동"]')) });
+  const r101 = page.locator("tbody tr").filter({ has: page.getByLabel("임차인").and(page.locator('[value="김철수"]')) });
+  await expect(r203.getByLabel("적용")).toHaveValue("new");
+  await expect(r101.getByLabel("적용")).toHaveValue("skip");  // 이미 계약 중 — 바꾸는 것은 사람이 고른다
+  await expect(r101).toContainText("지금: 임차인A");
+  await expect(r101.getByLabel("deposit", { exact: true })).toHaveValue("35000000");
+  await r101.getByLabel("적용").selectOption("end");
+  await page.getByRole("button", { name: "확인한 2건 적용" }).click();
+  await expect(page.getByText("계약 2건을 적용했습니다.")).toBeVisible();
+  const units = await api(page, "GET", "/api/v1/lease-history");
+  const u101 = units.find((u: { unit_no: string }) => u.unit_no === "101");
+  expect(u101.leases.map((l: { tenant_name: string; status: string }) => `${l.tenant_name}:${l.status}`)).toEqual(["김철수:active", "임차인A:ended"]);
+  expect(units.find((u: { unit_no: string }) => u.unit_no === "203").leases[0].tenant_name).toBe("홍길동");
 });

@@ -5,6 +5,9 @@
 - 통장: 연도까지 있는 날짜(2026.10.16 · 2026-10-16 · 2026년 10월 16일)로 거래를 나눈다. 연도 없는 날짜는 쓰지 않는다.
   입금/출금은 글자('입금'·'출금'·'지급')나 '출금 입금 잔액' 열 순서(0원이 있는 쪽)로만 정한다.
 - 계약서: contract_extract 규칙(보증금·월세·관리비·납부일·기간)을 그대로 쓴다. 이름·연락처는 뽑지 않는다.
+- 임대관리 앱 '자리톡' 호실 계약 화면(2026-10 실물 캡처 확인): 호실 번호·임차인·임대유형·월임대료·보증금·월관리비·
+  납부일(매달 n일)·연락처·계약기간을 읽는다. 사장님이 쓰던 장부 화면이라 이름·연락처까지 옮긴다(앱이 암호화해 저장).
+  글자 인식이 '304호'를 '304='로, '납부일'을 '남부일'로 읽는 일이 잦아 그것까지 받는다. 화면 하나 = 호실 하나.
 """
 from __future__ import annotations
 
@@ -99,3 +102,99 @@ def parse_units(text: str) -> tuple[list[dict], list[str]]:
     if not found and row["unit_no"] is None:
         return [], notes + ["보증금·월세·기간 문구를 찾지 못했습니다. 계약서 첫 장을 밝게 찍어 다시 올려 주세요"]
     return [row], notes
+
+
+# ── 자리톡 호실 계약 화면 ──────────────────────────────────────
+
+JARITALK_MARKS = ("부가세액", "납부총액", "남부총액", "신규 세입자", "계약/수납", "임대유형")
+MANWON = re.compile(r"([\d][\d,]*)\s*만\s*원")
+PHONE = re.compile(r"01[016789][\s.\-]?\d{3,4}[\s.\-]?\d{4}")
+PERIOD = re.compile(r"(20\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})\s*[~\-–]\s*(20\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})")
+# 화면 위 큰 글씨 '304호' — 글자 인식이 '호'를 '=', 숫자(3022·2029)로 읽거나 빼먹는다. 읽힌 그대로 돌려주고
+# (모르는 값을 지어내지 않음) 화면이 등록된 호실과 짝지을 때 끝자리 하나를 뗀 번호가 있으면 '확인 필요'로 맞춘다
+HEADER_UNIT = re.compile(r"^\W*(\d{2,5})\s*(?:호|=|ㅎ|g)?\s*$")
+NAME = re.compile(r"[가-힣]{2,4}")
+NOT_NAME = {"접기", "펼치기", "만료", "연장", "퇴거", "수정", "삭제", "어반빌", "계약", "세입자", "전세", "월세", "선불", "후불"}
+
+
+def is_jaritalk(text: str) -> bool:
+    return sum(m in text for m in JARITALK_MARKS) >= 2
+
+
+def _manwon_after(line: str, key: str) -> int | None:
+    """한 줄에서 key 뒤 첫 'n만원' (보증금·관리비가 한 줄에 같이 나오므로 key 바로 뒤만)."""
+    i = line.find(key)
+    if i < 0:
+        return None
+    m = MANWON.search(line, i)
+    return int(m.group(1).replace(",", "")) * 10_000 if m else None
+
+
+def parse_jaritalk(text: str) -> dict | None:
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    row = {k: None for k in ("unit_no", "tenant_name", "tenant_phone", "deposit", "rent", "mgmt_fee", "due_day",
+                             "start_date", "end_date", "signed_on", "deposit_received_on")}
+    for ln in lines[:8]:  # 화면 위쪽 큰 글씨 '304호'
+        if m := HEADER_UNIT.match(ln):
+            row["unit_no"] = m.group(1)
+            break
+    else:
+        if m := UNIT_NO.search(text):
+            row["unit_no"] = m.group(1)
+    # 펼쳐진 계약 = '연장 퇴거 수정 삭제' 단추 바로 윗줄의 이름
+    for i, ln in enumerate(lines):
+        if "연장" in ln and ("퇴거" in ln or "삭제" in ln) and i > 0:
+            head = re.split(r"만료|접기|펼치기", lines[i - 1])[0]
+            names = [n for n in NAME.findall(head) if n not in NOT_NAME]
+            row["tenant_name"] = names[-1] if names else None
+            body = lines[i + 1:]
+            break
+    else:
+        body = lines
+    for ln in body:
+        if row["deposit"] is None and "보증금" in ln:
+            row["deposit"] = _manwon_after(ln, "보증금")
+        if row["mgmt_fee"] is None and "관리비" in ln:
+            row["mgmt_fee"] = _manwon_after(ln, "관리비")
+        if row["rent"] is None and ("임대유형" in ln or "임대료" in ln):
+            if "전세" in ln and not MANWON.search(ln):
+                row["rent"] = 0
+            else:
+                rest = ln[ln.find("임대유형"):] if "임대유형" in ln else ln
+                m = MANWON.search(rest)
+                row["rent"] = int(m.group(1).replace(",", "")) * 10_000 if m else None
+        if row["due_day"] is None and (m := re.search(r"매\s*달\s*(\d{1,2})\s*일", ln)) and 1 <= int(m.group(1)) <= 31:
+            row["due_day"] = int(m.group(1))
+        if row["tenant_phone"] is None and (m := PHONE.search(ln)):
+            digits = re.sub(r"\D", "", m.group(0))
+            row["tenant_phone"] = f"{digits[:3]}-{digits[3:-4]}-{digits[-4:]}"
+        if row["start_date"] is None and (m := PERIOD.search(ln)):
+            try:
+                a, b = date(*map(int, m.group(1, 2, 3))), date(*map(int, m.group(4, 5, 6)))
+                if a < b:
+                    row["start_date"], row["end_date"] = a.isoformat(), b.isoformat()
+            except ValueError:
+                pass
+    if all(row[k] is None for k in ("deposit", "rent", "start_date")):
+        return None
+    row["evidence"] = "자리톡 계약 화면" + (f" {row['unit_no']}호" if row["unit_no"] else "")
+    return row
+
+
+def parse_units_many(texts: list[str]) -> tuple[list[dict], list[str]]:
+    """사진마다 따로 읽는다 — 자리톡 화면이면 호실 하나씩, 아니면 계약서 규칙."""
+    rows, notes = [], []
+    for i, text in enumerate(texts, 1):
+        if is_jaritalk(text):
+            if row := parse_jaritalk(text):
+                rows.append(row)
+                missing = [k for k in ("unit_no", "tenant_name", "rent", "due_day", "start_date") if row[k] is None]
+                if missing:
+                    notes.append(f"사진 {i}: 확인 필요 — {', '.join(missing)}")
+            else:
+                notes.append(f"사진 {i}: 자리톡 화면이지만 계약 값을 읽지 못했습니다 (계약을 펼친 화면으로 올려 주세요)")
+        else:
+            r, n = parse_units(text)
+            rows += r
+            notes += [f"사진 {i}: {x}" for x in n]
+    return rows, list(dict.fromkeys(notes))
