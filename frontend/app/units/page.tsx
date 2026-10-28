@@ -86,7 +86,7 @@ export default function UnitsPage() {
                             <FileCheck2 className="h-3.5 w-3.5" />납부 확인서</Link>}
                         </div>
                         <p className="mt-0.5 text-xs text-slate-600">{l.start_date} ~ {l.end_date ?? "—"} · 보증금 {won(l.deposit)} · 월세 {won(l.rent)}
-                          {" · "}{l.mgmt_fee == null ? "관리비 따로 안 적음" : l.mgmt_fee === 0 ? "관리비 없음" : `관리비 ${won(l.mgmt_fee)}`}
+                          {" · "}{l.mgmt_fee == null ? "관리비 따로 안 적음" : l.mgmt_fee === 0 ? "관리비 없음" : `관리비 ${won(l.mgmt_fee)} (월 합계 ${won(l.rent + l.mgmt_fee)})`}
                           {l.end_reason ? ` · ${l.end_reason}` : ""}</p>
                         {canWrite && l.status === "active" && (ending === l.lease_id ? (
                           <EndForm busy={busy} onCancel={() => setEnding(null)} onSave={(body) => run(

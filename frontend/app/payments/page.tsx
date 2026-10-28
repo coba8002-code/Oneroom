@@ -4,11 +4,13 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
+  appliedText,
   type AllocationOut,
   type BankAccount,
   type ImportOut,
   type Category,
   CATEGORY_LABEL,
+  CHARGE_KIND,
   kindTag,
   kst,
   type LeaseOut,
@@ -144,6 +146,7 @@ export default function PaymentsPage() {
               <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">
                 {a.unit_no ? `${a.unit_no} · ` : ""}{CATEGORY_LABEL[a.category] ?? a.category}
               </span>
+              {!!a.applied?.length && <span className="text-xs tabular-nums text-slate-700">{appliedText(a.applied)}</span>}
               <span className="w-full text-xs text-slate-500 sm:w-auto sm:flex-1">{a.reason}</span>
               <button type="button" disabled={busy} className="text-xs text-slate-500 hover:text-red-700"
                 onClick={() => act(() => api(`/api/v1/allocations/${a.id}/cancel?${q}`, { method: "POST" }),
@@ -249,9 +252,35 @@ function QueueCard({ item, leases, busy, onDecide }: {
   );
 }
 
+type RecvItem = Receivables["items"][number];
+type RecvRow = RecvItem & { parts: RecvItem[] };
+
+/** 월세·관리비는 따로 청구·관리하지만, 같은 호실·같은 달·같은 납부일이면 한 줄로 합쳐 보여 준다 */
+function combineRentMgmt(items: RecvItem[]): RecvRow[] {
+  const rows: RecvRow[] = [];
+  const byKey = new Map<string, RecvRow>();
+  for (const i of items) {
+    const kind = i.kind ?? "rent";
+    if (kind !== "rent" && kind !== "mgmt") { rows.push({ ...i, parts: [i] }); continue; }
+    const key = `${i.unit_no}|${i.period}|${i.due_date}`;
+    const row = byKey.get(key);
+    if (!row) { const r = { ...i, parts: [i] }; byKey.set(key, r); rows.push(r); continue; }
+    row.parts.push(i);
+    row.amount += i.amount; row.paid += i.paid; row.outstanding += i.outstanding;
+    row.days_past_due = Math.max(row.days_past_due, i.days_past_due);
+  }
+  return rows;
+}
+
+function rowLabel(r: RecvRow): string {
+  if (r.parts.length < 2) return kindTag(r.kind);
+  return " · 월세·관리비";
+}
+
 function ReceivablesView({ recv, asOf, onAsOf }: {
   recv: Receivables; asOf: string; onAsOf: (d: string) => void;
 }) {
+  const rows = combineRentMgmt(recv.items);
   return (
     <section className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -282,10 +311,16 @@ function ReceivablesView({ recv, asOf, onAsOf }: {
               </tr>
             </thead>
             <tbody>
-              {recv.items.map((i) => (
-                <tr key={`${i.unit_no}-${i.period}-${i.kind ?? "rent"}`} className="border-t">
+              {rows.map((i) => (
+                <tr key={`${i.unit_no}-${i.period}-${i.due_date}-${i.kind ?? "rent"}`} className="border-t">
                   <td className="p-2">{i.unit_no} <span className="text-slate-500">{i.tenant_name}</span></td>
-                  <td className="p-2">{i.period}{kindTag(i.kind)}</td>
+                  <td className="p-2">{i.period}{rowLabel(i)}
+                    {i.parts.length > 1 && (
+                      <span className="block text-xs text-slate-500">
+                        {i.parts.map((p) => `${CHARGE_KIND[p.kind ?? "rent"]} 미수 ${won(p.outstanding)}`).join(" · ")}
+                      </span>
+                    )}
+                  </td>
                   <td className="p-2 tabular-nums">{i.due_date}</td>
                   <td className="p-2 text-right tabular-nums">{won(i.paid)}</td>
                   <td className="p-2 text-right font-medium tabular-nums">{won(i.outstanding)}</td>

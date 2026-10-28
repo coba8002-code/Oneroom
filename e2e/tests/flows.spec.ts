@@ -329,7 +329,7 @@ test("관리비 분리: 섞인 월세를 '월세 + 관리비'로 나눠 적기 �
   await expect(unit.getByLabel("월세 (원)")).toHaveValue("400000");
   await unit.getByRole("button", { name: "저장" }).click();
   await expect(page.getByText("101호 월세·관리비를 고쳤습니다.", { exact: false })).toBeVisible();
-  await expect(unit).toContainText("월세 400,000원 · 관리비 50,000원");
+  await expect(unit).toContainText("월세 400,000원 · 관리비 50,000원 (월 합계 450,000원)");
 
   await api(page, "POST", `/api/v1/charges/generate?organization_id=${org}&period=2026-11`);
   await importBank(page, org, sampleBank());  // 임차인A 450,000 = 월세 400,000 + 관리비 50,000
@@ -337,6 +337,12 @@ test("관리비 분리: 섞인 월세를 '월세 + 관리비'로 나눠 적기 �
   const rows = await api(page, "GET", `/api/v1/charges?organization_id=${org}&period=2026-11`);
   const of101 = rows.filter((c: { unit_no: string }) => c.unit_no === "101").map((c: { kind: string; status: string }) => `${c.kind}:${c.status}`);
   expect(of101.sort()).toEqual(["mgmt:paid", "rent:paid"]);
+  // 관리는 따로, 보기는 함께 — 확정 목록에 한 번 입금이 월세·관리비로 나뉜 결과가 한 줄로 보인다
+  await page.goto("/payments");
+  const recent = page.locator("li").filter({ hasText: "임차인A" });
+  await expect(recent).toContainText("101 · 월세·관리비");
+  await expect(recent).toContainText("2026-11 월세 400,000원 + 관리비 50,000원");
+  await page.goto("/units");
 
   await unit.getByRole("link", { name: "납부 확인서" }).click();
   await page.getByLabel("연도 (입금일 기준)").selectOption("2026");

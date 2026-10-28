@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.auth import Member, org_guard
 from app.db import get_session
-from app.models import BankAccount, Organization, Transaction, TransactionAllocation
+from app.models import BankAccount, Charge, Organization, Payment, Transaction, TransactionAllocation
 from app.schemas import (
     AllocationOut,
+    AppliedCharge,
     DecisionIn,
     LeaseOut,
     MatchRunOut,
@@ -137,6 +138,10 @@ def _alloc_out(session: Session, organization_id: uuid.UUID, a: TransactionAlloc
         lease_id=a.lease_id, unit_no=units.get(a.lease_id), category=a.category, amount=a.amount,
         review_status=a.review_status,
         confidence=float(a.confidence) if a.confidence is not None else None, reason=a.reason,
+        applied=[AppliedCharge(period=c.period, kind=c.kind, amount=p.amount) for p, c in session.execute(
+            select(Payment, Charge).join(Charge, Payment.charge_id == Charge.id)
+            .where(Payment.transaction_allocation_id == a.id)
+            .order_by(Charge.due_date, Charge.period, Charge.kind.desc())).all()],
     )
 
 

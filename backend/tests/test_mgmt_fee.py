@@ -91,6 +91,11 @@ def test_one_payment_for_rent_and_mgmt_auto_confirms(client, onboarded, org, mon
     assert rows[("101", "rent")]["status"] == "paid" and rows[("101", "mgmt")]["status"] == "paid"
     m = client.get("/api/v1/reports/monthly", params=_p(org, period=P)).json()
     assert m["mgmt_received"] == 50_000
+    # 확정 목록은 한 번에 들어온 돈을 월세·관리비로 나눈 결과를 함께 보여 준다 (관리는 따로, 보기는 함께)
+    a = next(x for x in client.get("/api/v1/allocations", params=_p(org)).json()
+             if x["transaction"]["counterparty"] == "임차인A")
+    assert a["amount"] == 450_000 and a["applied"] == [
+        {"period": P, "kind": "rent", "amount": 400_000}, {"period": P, "kind": "mgmt", "amount": 50_000}]
     # 납부 확인서는 월세 몫만 (관리비는 월세 세액공제 대상이 아님)
     monkeypatch.setattr(cert_router, "_today", lambda: date(2027, 1, 10))
     c = client.get(f"/api/v1/leases/{lease}/rent-certificate", params={"year": 2026}).json()

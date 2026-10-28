@@ -175,6 +175,13 @@ class DecisionIn(BaseModel):
     remember_alias: bool = False
 
 
+class AppliedCharge(BaseModel):
+    """확정된 입금이 어느 청구에 얼마나 들어갔는지 (월세·관리비를 따로 관리해도 함께 보여 주기 위해)"""
+    period: str
+    kind: str
+    amount: int
+
+
 class AllocationOut(BaseModel):
     id: uuid.UUID
     transaction: TransactionOut
@@ -185,6 +192,7 @@ class AllocationOut(BaseModel):
     review_status: str
     confidence: float | None
     reason: str | None
+    applied: list[AppliedCharge] = []
 
 
 class ReceivableItem(BaseModel):
