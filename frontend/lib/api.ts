@@ -123,7 +123,7 @@ export interface TransactionOut {
 export type Category = "rent" | "deposit_in" | "personal" | "owner_household" | "other";
 
 export const CATEGORY_LABEL: Record<string, string> = {
-  rent: "월세",
+  rent: "월세·관리비",
   deposit_in: "보증금 수령",
   personal: "개인 생활비",
   owner_household: "주인세대",
@@ -213,6 +213,8 @@ export interface AllocationOut {
   amount: number;
   confidence: number | null;
   reason: string | null;
+  /** 이 입금이 들어간 청구 (월세·관리비를 따로 관리해도 함께 보여 줌) */
+  applied?: { period: string; kind: string; amount: number }[];
 }
 
 export interface Receivables {
@@ -236,6 +238,14 @@ export interface Receivables {
 /** 청구 종류 — 월세 외에는 공과금 배분 청구 */
 export const CHARGE_KIND: Record<string, string> = { rent: "월세", mgmt: "관리비", electricity: "전기", water: "수도", gas: "가스", internet: "인터넷" };
 export const kindTag = (kind?: string) => (kind && kind !== "rent" ? ` · ${CHARGE_KIND[kind] ?? kind}` : "");
+
+/** 한 입금이 들어간 청구를 달별로 묶어 한 줄로: "2026-11 월세 400,000원 + 관리비 50,000원" */
+export function appliedText(applied: { period: string; kind: string; amount: number }[] | undefined): string {
+  if (!applied?.length) return "";
+  const by = new Map<string, string[]>();
+  for (const a of applied) by.set(a.period, [...(by.get(a.period) ?? []), `${CHARGE_KIND[a.kind] ?? a.kind} ${won(a.amount)}`]);
+  return [...by].map(([p, parts]) => `${p} ${parts.join(" + ")}`).join(" · ");
+}
 
 /** 저장은 UTC, 표시는 KST */
 export const kst = (iso: string | null) =>
