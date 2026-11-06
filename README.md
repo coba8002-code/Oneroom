@@ -11,7 +11,13 @@ deploy/     운영 배포 (docker compose + Caddy HTTPS) — deploy/README.md
             · GitHub → Vercel + Supabase (서버 관리 없음) — deploy/vercel-supabase-guide.md
 samples/    온보딩 CSV · 은행 거래 CSV 샘플 (가상 데이터)
 docs/       PRD
+android/    안드로이드 앱(TWA 껍데기) — deploy/android-apk.md, APK 는 Actions 가 빌드해 Releases 에 올림
+e2e/        브라우저 시험 (Playwright)
+tools/      앱 밖 보조 도구 — 은행 내역 변환(bank/), 로컬 시험용 가짜 서버(dev/) · tools/README.md
 ```
+
+배포 대상: 화면 = Vercel `oneroom`(oneroom-ten.vercel.app), API = Vercel `oneroom-1yy4`(화면의 `ROOMAX_API_ORIGIN`), DB = Supabase.
+실제 장부 자료(통장 내역·계약서·엑셀)는 이 공개 저장소에 두지 않고 비공개 저장소 `oneroom-ledger` 에 둡니다.
 
 ## 실행
 

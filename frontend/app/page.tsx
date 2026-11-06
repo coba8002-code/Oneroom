@@ -21,7 +21,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Dashboard, manwon, mmdd, todayKst, won } from "@/lib/api";
 import { useOrg } from "@/lib/useOrg";
 
@@ -92,12 +92,18 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // 기준일을 빨리 바꾸면 앞서 보낸 요청이 늦게 올 수 있다 — 마지막 요청의 응답만 화면에 쓴다
+  const latest = useRef(0);
   const reload = useCallback(async () => {
     if (!orgId) return;
+    const seq = ++latest.current;
     try {
-      setD(await api<Dashboard>(`/api/v1/dashboard?organization_id=${orgId}&as_of=${asOf}`));
+      const next = await api<Dashboard>(`/api/v1/dashboard?organization_id=${orgId}&as_of=${asOf}`);
+      if (seq !== latest.current) return;
+      setD(next);
       setError(null);
     } catch (e) {
+      if (seq !== latest.current) return;
       setError((e as Error).message);
     }
   }, [orgId, asOf]);
