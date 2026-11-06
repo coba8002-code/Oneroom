@@ -27,10 +27,11 @@ import {
   Droplets,
   BadgeCheck,
   Camera,
+  CreditCard,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { API_BASE, isPublicPage, type Me, ROLE_LABEL, TENANT_PREFIX } from "@/lib/api";
+import { ACCOUNTANT_PREFIX, API_BASE, isPublicPage, type Me, ROLE_LABEL, TENANT_PREFIX } from "@/lib/api";
 import { MeContext } from "@/lib/me";
 
 type NavItem = { href: string | null; label: string; icon: LucideIcon };
@@ -55,6 +56,7 @@ const NAV: NavItem[] = [
   { href: "/tax", label: "세무 준비", icon: Landmark },
   { href: "/simulate", label: "전월세 시뮬레이션", icon: Calculator },
   { href: "/assistant", label: "AI 비서", icon: Bot },
+  { href: "/billing", label: "요금제", icon: CreditCard },
   { href: "/settings", label: "설정", icon: Settings },
 ];
 
@@ -181,7 +183,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const authPage = isPublicPage(pathname);
 
   const reload = useCallback(async () => {
-    if (window.location.pathname.startsWith(TENANT_PREFIX)) return;  // 임차인 화면은 관리자 로그인과 무관
+    const p = window.location.pathname;
+    if (p.startsWith(TENANT_PREFIX) || p.startsWith(ACCOUNTANT_PREFIX)) return;  // 임차인·세무사 화면은 관리자 로그인과 무관
     const res = await fetch(`${API_BASE}/api/v1/auth/me`, { credentials: "include" }).catch(() => null);
     if (res?.ok) {
       setMe(await res.json());

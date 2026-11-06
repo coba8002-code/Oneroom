@@ -76,6 +76,10 @@ class Settings:
     alimtalk_provider: str = os.getenv("ROOMAX_ALIMTALK_PROVIDER", "")
     alimtalk_api_key: str = os.getenv("ROOMAX_ALIMTALK_API_KEY", "")
     alimtalk_sender_key: str = os.getenv("ROOMAX_ALIMTALK_SENDER_KEY", "")
+    # 정기결제 (토스페이먼츠 빌링). 둘 다 있어야 결제·요금 한도가 켜진다 — 없으면 모두 무료로 동작(한도 없음)
+    toss_client_key: str = os.getenv("ROOMAX_TOSS_CLIENT_KEY", "")
+    toss_secret_key: str = os.getenv("ROOMAX_TOSS_SECRET_KEY", "")
+    toss_api_url: str = os.getenv("ROOMAX_TOSS_API_URL", "https://api.tosspayments.com").rstrip("/")
     cors_origins: tuple[str, ...] = tuple(
         o for o in os.getenv("ROOMAX_CORS_ORIGINS", "http://localhost:3000").split(",") if o
     )

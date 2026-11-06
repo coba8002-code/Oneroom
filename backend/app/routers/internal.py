@@ -3,11 +3,13 @@
 GET /api/v1/internal/cron/daily  (Authorization: Bearer <ROOMAX_CRON_SECRET 또는 CRON_SECRET>)
 - DB 를 한 번 조회해 무료 DB 의 비활성 정지를 막는다
 - ROOMAX_BACKUP_PASSPHRASE 가 있으면 모든 사업장을 정기 백업(보관소 'backups')하고 오래된 것을 정리
+- 기간이 끝난 유료 구독을 다시 결제 (결제가 켜져 있을 때만)
 - 내려받기·복구용 임시 파일은 비밀번호가 없어도 하루 뒤 정리
 비밀값이 설정되지 않았으면 이 주소는 없는 것처럼(404) 동작한다.
 """
 import hmac
 import os
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import text
@@ -15,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_session
-from app.services import blobs, scheduled_backup
+from app.services import billing, blobs, scheduled_backup
 
 router = APIRouter(prefix="/api/v1/internal", tags=["internal"], include_in_schema=False)
 
@@ -28,11 +30,12 @@ def daily(authorization: str | None = Header(default=None), session: Session = D
     if not hmac.compare_digest((authorization or "").encode(), f"Bearer {expected}".encode()):
         raise HTTPException(401, "인증 실패")
     session.execute(text("SELECT 1"))
+    renewals = billing.renew_due(session, datetime.now(timezone.utc))
     passphrase = os.environ.get("ROOMAX_BACKUP_PASSPHRASE", "")
     if not passphrase:
         cleaned = scheduled_backup.remove_transfers(blobs.store("backups"))
-        return {"db": "ok", "backup": ["건너뜀 (ROOMAX_BACKUP_PASSPHRASE 없음)", *cleaned]}
+        return {"db": "ok", "billing": renewals, "backup": ["건너뜀 (ROOMAX_BACKUP_PASSPHRASE 없음)", *cleaned]}
     report = scheduled_backup.run(session, blobs.store("backups"), passphrase,
                                   keep=int(os.environ.get("BACKUP_KEEP", "30")),
                                   orphan_days=int(os.environ.get("BACKUP_ORPHAN_DAYS", "30")))
-    return {"db": "ok", "backup": report}
+    return {"db": "ok", "billing": renewals, "backup": report}

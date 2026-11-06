@@ -476,3 +476,34 @@ test("사진으로 넣기(무료): 자리톡 화면 zip → 호실별 표 → �
   expect(u101.leases.map((l: { tenant_name: string; status: string }) => `${l.tenant_name}:${l.status}`)).toEqual(["김철수:active", "임차인A:ended"]);
   expect(units.find((u: { unit_no: string }) => u.unit_no === "203").leases[0].tenant_name).toBe("홍길동");
 });
+
+test("세무: 셀프 신고 도우미 추정 → 세무사 링크 만들기 → 세무사 화면(로그인 없음) · 요금제 화면", async ({ page, browser }) => {
+  const org = await signupAndOnboard(page);
+  await api(page, "POST", `/api/v1/charges/generate?organization_id=${org}&period=2026-11`);
+  await importBank(page, org, sampleBank());
+  await api(page, "POST", `/api/v1/matching/run?organization_id=${org}`);
+
+  await page.goto("/tax");
+  await page.getByLabel("귀속연도").selectOption("2026");
+  const helper = page.locator("section[aria-labelledby=self-filing]");
+  await helper.getByLabel(/다른 종합소득금액/).fill("10000000");
+  await helper.getByRole("button", { name: "추정하기" }).click();
+  await expect(helper.getByText("분리과세 (14%) 추정")).toBeVisible();
+  await expect(helper.getByText(/추정치입니다/)).toBeVisible();
+  await expect(helper.getByText("홈택스에서 직접 신고하기")).toBeVisible();
+
+  const share = page.locator("section[aria-labelledby=accountant-link]");
+  await share.getByRole("button", { name: "링크 만들기" }).click();
+  const url = await share.locator("code").innerText();
+  expect(url).toMatch(/\/a\/[\w-]{20,}$/);
+
+  const accountant = await (await browser.newContext()).newPage();  // 세무사: 로그인 없이
+  await accountant.goto(url);
+  await expect(accountant.getByRole("heading", { name: "2026년 귀속 세무 준비 자료" })).toBeVisible();
+  await expect(accountant.getByRole("button", { name: "엑셀 내려받기" })).toBeVisible();
+  await expect(accountant.locator("body")).not.toContainText("임차인A");
+
+  await page.goto("/billing");
+  await expect(page.getByRole("heading", { name: "요금제" })).toBeVisible();
+  await expect(page.getByText("결제가 아직 열리지 않았습니다")).toBeVisible();  // 결제 키 없는 서버 = 한도 없음
+});

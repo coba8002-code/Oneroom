@@ -69,7 +69,8 @@ async function errorText(res: Response): Promise<string> {
 export const AUTH_PAGES = ["/login", "/signup", "/terms", "/privacy", "/forgot-password", "/reset-password", "/verify-email", "/invite"];
 export const TENANT_PREFIX = "/t/";  // 임차인 화면 — 로그인 없이 초대 링크로 연다
 /** 로그인 없이 여는 화면 (메뉴 없음, 401 이어도 로그인 화면으로 보내지 않음) */
-export const isPublicPage = (path: string) => AUTH_PAGES.includes(path) || path.startsWith(TENANT_PREFIX);
+export const ACCOUNTANT_PREFIX = "/a/";  // 세무사 화면 — 로그인 없이 건물주가 보낸 링크로 연다
+export const isPublicPage = (path: string) => AUTH_PAGES.includes(path) || path.startsWith(TENANT_PREFIX) || path.startsWith(ACCOUNTANT_PREFIX);
 
 /** 로그인 쿠키를 함께 보내는 fetch. 401 이면 로그인 화면으로 보낸다 (가입·로그인 화면 제외). */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {

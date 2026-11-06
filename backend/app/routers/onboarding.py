@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -5,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth import Member, org_guard
 from app.db import get_session
 from app.schemas import CsvPreviewOut, OnboardingIn, OnboardingOut
+from app.services import billing
 from app.services.onboarding import OnboardingError, onboard, parse_onboarding_csv
 
 router = APIRouter(prefix="/api/v1/onboarding", tags=["onboarding"])
@@ -16,7 +19,12 @@ MAX_UPLOAD = 1_000_000
 def create(data: OnboardingIn, member: Member = Depends(org_guard),
            session: Session = Depends(get_session)) -> OnboardingOut:
     try:
+        billing.check_quota(session, member.organization_id, sum(1 for u in data.units if u.use_type == "rental"),
+                            datetime.now(timezone.utc))
         return onboard(session, member.organization_id, data)
+    except billing.QuotaError as e:
+        session.rollback()
+        raise HTTPException(402, str(e)) from e
     except OnboardingError as e:
         session.rollback()
         raise HTTPException(409, str(e)) from e
