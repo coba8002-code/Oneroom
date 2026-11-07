@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, apiFetch, kst, won } from "@/lib/api";
 import { shrinkImage } from "@/lib/image";
 import { useMe } from "@/lib/me";
+import { AccountantLinkCard, SelfFilingCard } from "./TaxTools";
 
 interface Month { period: string; future: boolean; bank_covered?: boolean; rent_charged?: number | null; rent_received?: number | null;
   operating_total?: number | null; excluded?: { owner_household: number | null; personal: number | null }; unconfirmed?: number }
@@ -72,7 +73,7 @@ export default function TaxPage() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="page-title">세무 준비</h1>
-          <p className="page-sub">귀속연도별 입력자료 모음과 지출 증빙. 세액을 계산하거나 신고를 확정하지 않습니다.</p>
+          <p className="page-sub">귀속연도별 입력자료 모음과 지출 증빙, 셀프 신고용 세액 추정(신고 확정 아님), 세무사에게 자료 보내기.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <select className="field" aria-label="귀속연도" value={year} onChange={(e) => setYear(Number(e.target.value))}>
@@ -96,6 +97,11 @@ export default function TaxPage() {
               <div><dt className="text-xs text-slate-500">작성 시각</dt><dd>{kst(d.generated_at)}</dd></div>
             </dl>
           </section>
+
+          <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+            <SelfFilingCard year={year} />
+            <AccountantLinkCard year={year} owner={me?.user.role === "owner"} />
+          </div>
 
           <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
             <section className="card p-5 text-sm">

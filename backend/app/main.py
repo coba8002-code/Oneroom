@@ -6,10 +6,10 @@ from sqlalchemy import text
 from app.auth import org_guard
 from app.config import production_problems, settings
 from app.db import engine
-from app.routers import (ai_keys, assets, assistant, auth, backups, bank, bank_alerts, charges, contracts, dashboard,
+from app.routers import (accountant, ai_keys, assets, assistant, auth, backups, bank, bank_alerts, charges, contracts, dashboard,
                          expenses, internal, leases, members, monthly_report, move_out, notifications, onboarding, payments,
                          rent_certificate, rent_sim, rental_business, routines, tax_prep, tenant_notices,
-                         tenant_portal, utilities, vacancy, vision)
+                         tenant_portal, utilities, vacancy, vision, billing)
 
 PRODUCTION = settings.env == "production"
 if PRODUCTION and (problems := production_problems(settings)):
@@ -31,13 +31,14 @@ app.include_router(auth.router)  # 가입·로그인은 로그인 없이
 app.include_router(internal.router)  # 매일 작업 — 자체 비밀값으로 보호
 app.include_router(bank_alerts.public)  # 휴대폰 입금 알림 — 계좌별 비밀 토큰으로 보호
 app.include_router(tenant_portal.public)  # 임차인 화면 — 계약별 초대 링크(비밀 토큰)로 보호
+app.include_router(accountant.public)  # 세무사 화면 — 연도별 공유 링크(비밀 토큰)로 보호
 
 # 업무 API 는 전부 로그인 필요 + organization_id 가 오면 내 사업장인지 검사 (app/auth.py)
 PROTECTED = [Depends(org_guard)]
 for r in (onboarding, charges, bank, payments, expenses, dashboard, contracts, backups, members, notifications,
           assets, move_out, leases, tax_prep, rent_sim, bank_alerts, routines, vacancy, assistant, monthly_report,
           tenant_portal, rent_certificate, tenant_notices, utilities, rental_business, vision,
-          ai_keys):
+          ai_keys, billing, accountant):
     app.include_router(r.router, dependencies=PROTECTED)
 
 

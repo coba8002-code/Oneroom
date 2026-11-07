@@ -773,6 +773,56 @@ class OrgApiKey(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+class Subscription(Base):
+    """사업장 요금제 (토스페이먼츠 빌링). 결제가 켜져 있을 때만 한도를 건다 (app/services/billing.py).
+    plan: trial(체험) | free(무료 한도) | basic(유료) | comp(무상 제공 — 운영자가 지정)
+    빌링키는 카드 결제 권한이라 암호화 저장, 백업에 넣지 않는다 (backup.EXCLUDED)."""
+    __tablename__ = "subscriptions"
+    id: Mapped[uuid.UUID] = pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), unique=True)
+    plan: Mapped[str] = mapped_column(String(10), default="trial")
+    billing_cycle: Mapped[str | None] = mapped_column(String(10))  # monthly | yearly
+    trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    past_due_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # 해지 예약 (기간 끝까지 사용)
+    customer_key: Mapped[str] = mapped_column(String(64), unique=True)
+    billing_key: Mapped[str | None] = mapped_column(EncryptedString())
+    card_label: Mapped[str | None] = mapped_column(String(50))  # 예: '신한 ****1234' — 화면 표시용
+    tax_helper_until: Mapped[date | None] = mapped_column(Date)  # 셀프 신고 도우미 이용 기한
+    created_at: Mapped[datetime] = created_at()
+
+
+class BillingPayment(Base):
+    """결제 기록 (성공·실패 모두). 금액은 원 단위 정수. 카드 번호·결제 응답 원문은 남기지 않는다."""
+    __tablename__ = "billing_payments"
+    id: Mapped[uuid.UUID] = pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    order_id: Mapped[str] = mapped_column(String(64), unique=True)
+    item: Mapped[str] = mapped_column(String(20))  # basic_monthly | basic_yearly | tax_helper
+    amount: Mapped[int] = mapped_column(BigInteger)
+    units: Mapped[int | None] = mapped_column(Integer)  # 결제 때 셈한 임대 호실 수
+    status: Mapped[str] = mapped_column(String(10))  # done | failed
+    payment_key: Mapped[str | None] = mapped_column(String(200))
+    failure: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = created_at()
+
+
+class AccountantLink(Base):
+    """세무사 공유 링크 — 귀속연도 하나의 세무 준비 자료를 로그인 없이 읽기 전용으로 연다.
+    비밀 토큰은 sha256 만 저장, 원문은 만들 때 한 번만 보여 준다. 연도마다 하나만 유효."""
+    __tablename__ = "accountant_links"
+    id: Mapped[uuid.UUID] = pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    year: Mapped[int] = mapped_column(Integer)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = created_at()
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id: Mapped[uuid.UUID] = pk()
